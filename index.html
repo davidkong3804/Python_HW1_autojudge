@@ -76,6 +76,10 @@
         </select>
       </label>
       <label class="opt"><input type="checkbox" id="stopOnFirst"> 每題錯一筆就跳過剩下的（比較快）</label>
+      <label class="opt" title="例如印完答案後又寫 input('按 Enter 結束')，輸出其實是對的">
+        <input type="checkbox" id="lenientRe" checked> 只要輸出正確就給分（印完才出錯不扣）</label>
+      <label class="opt" title="有些同學一個值一個 input() 讀；讀到 EOF 時自動改用逐行輸入重跑一次">
+        <input type="checkbox" id="lenientInput" checked> 相容「一個值一個 input()」的寫法</label>
     </div>
     <div id="progressBox" hidden>
       <div class="bar"><div id="bar"></div></div>
@@ -91,6 +95,7 @@
       <button class="btn" id="exportJson">匯出 JSON（含每筆細節）</button>
       <span id="summaryStat" class="pill"></span>
     </div>
+    <p id="gradeNote" class="warn small" hidden></p>
     <div class="tablewrap">
       <table id="scoreTable">
         <thead><tr id="scoreHead"></tr></thead>

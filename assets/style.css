@@ -98,9 +98,11 @@ tbody tr:hover { background: color-mix(in srgb, var(--brand) 5%, transparent); }
 .case > .head { display: flex; gap: 10px; align-items: center; padding: 7px 10px; font-size: 13px; }
 .case.ac > .head { background: var(--ok-bg); }
 .case.wa > .head, .case.re > .head, .case.tle > .head { background: var(--bad-bg); }
+.case.reok > .head { background: var(--warn-bg); }
 .tag { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 4px; letter-spacing: .04em; }
 .tag.ac { background: var(--ok); color: #fff; }
 .tag.wa, .tag.re, .tag.tle { background: var(--bad); color: #fff; }
+.tag.reok { background: var(--warn); color: #fff; }
 .case pre { margin: 0; padding: 8px 10px; font-family: var(--mono); font-size: 12.5px;
   white-space: pre-wrap; word-break: break-all; border-top: 1px solid var(--line); background: var(--card); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; }

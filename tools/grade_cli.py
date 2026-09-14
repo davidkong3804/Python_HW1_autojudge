@@ -18,6 +18,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -26,6 +27,25 @@ import zipfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ID_RE = re.compile(r"[A-Za-z]\d{7,10}|\d{8,10}")
 QID_RE = re.compile(r"(?:^|[^a-z0-9])q\s*([1-6])(?![0-9])", re.I)
+
+
+def decode_source(raw):
+    """學生的 .py 可能是 UTF-8 BOM / UTF-16 / Big5（Windows 記事本）。
+    直接當 UTF-8 讀會變亂碼或夾帶 NUL，compile 失敗就變成無辜的 0 分。"""
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        text = raw.decode("utf-16", errors="replace")
+    else:
+        if raw[:3] == b"\xef\xbb\xbf":
+            raw = raw[3:]
+        for enc in ("utf-8", "big5", "cp950"):
+            try:
+                text = raw.decode(enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            text = raw.decode("utf-8", errors="replace")
+    return text.lstrip("\ufeff").replace("\x00", "").replace("\r\n", "\n").replace("\r", "\n")
 
 
 def load_manifest():
@@ -42,6 +62,12 @@ def normalize(text, mode="strict"):
     if mode == "loose":
         return re.sub(r"\s+", "", "\n".join(lines)).lower()
     return "\n".join(lines)
+
+
+def alt_input(text):
+    """同一筆測資的逐行版：有些同學一個值一個 input() 讀。"""
+    alt = re.sub(r"[,\s]+", "\n", str(text)).strip()
+    return alt if (alt != str(text).strip() and "\n" in alt) else ""
 
 
 def detect_qid(name):
@@ -68,7 +94,12 @@ def detect_student(relpath):
         if seg and not re.fullmatch(r"(src|code|python|作業|homework|hw\s*\d*)", seg, flags=re.I):
             return seg
     hit = ID_RE.search(base)
-    return hit.group(0).upper() if hit else (base or "未知")
+    if hit:
+        return hit.group(0).upper()
+    # 絕對不能拿檔名(q1/q2...)當學號，否則一個人的六個檔會變成六位「學生」
+    if parts:
+        return parts[-1]
+    return base or "未知"
 
 
 def collect(paths, workdir):
@@ -77,8 +108,8 @@ def collect(paths, workdir):
 
     def take_file(disp, real):
         try:
-            with open(real, encoding="utf-8", errors="replace") as fh:
-                found.append((disp, fh.read()))
+            with open(real, "rb") as fh:
+                found.append((disp, decode_source(fh.read())))
         except OSError as exc:
             print("讀取失敗 %s：%s" % (disp, exc), file=sys.stderr)
 
@@ -116,20 +147,90 @@ def collect(paths, workdir):
     return found
 
 
-def run_one(code, stdin_text, timeout):
-    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as fh:
-        fh.write(code)
-        path = fh.name
+# 跟網頁版 assets/worker.js 完全相同的執行語意：
+#   * input() 的提示字不進 stdout
+#   * 輸入用完再 input() -> EOFError
+#   * traceback 不顯示批改程式自己的框架
+RUNNER = r"""
+import sys, io, builtins, traceback
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as fh:
+    src = fh.read()
+
+data = sys.stdin.read().split("\n")
+if data and data[-1] == "":
+    data.pop()
+state = [0]
+
+def _input(prompt=""):
+    if state[0] >= len(data):
+        raise EOFError("EOF when reading a line")
+    state[0] += 1
+    return data[state[0] - 1]
+
+builtins.input = _input
+sys.stdin = io.StringIO("\n".join(data) + "\n")
+
+g = {"__name__": "__main__", "__file__": "student.py", "__doc__": None}
+try:
+    exec(compile(src, "student.py", "exec"), g)
+except SystemExit:
+    pass
+except EOFError:
+    sys.stdout.flush()
+    sys.stderr.write("EOFError：程式把這一題的輸入用完了還想再讀一次 input()。\n")
+    sys.exit(3)          # 3 = 輸入不夠用，批改程式會改用逐行輸入再跑一次
+except BaseException:
+    sys.stdout.flush()
+    etype, evalue, etb = sys.exc_info()
+    traceback.print_exception(etype, evalue, etb.tb_next if etb else None, file=sys.stderr)
+    sys.exit(1)
+"""
+
+MEM_LIMIT_MB = 1024
+
+
+def _child_setup():
+    """新的 process group（逾時才殺得乾淨）+ 記憶體上限（擋 [0]*10**9）"""
+    os.setsid()
     try:
-        proc = subprocess.run([sys.executable, path], input=stdin_text, capture_output=True,
-                              text=True, timeout=timeout)
-        return proc.stdout, proc.stderr, ("re" if proc.returncode else "ok")
+        import resource
+        limit = MEM_LIMIT_MB * 1024 * 1024
+        resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
+def run_one(code, stdin_text, timeout, workdir):
+    path = os.path.join(workdir, "student_run.py")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(code)
+    sandbox = os.path.join(workdir, "cwd")
+    os.makedirs(sandbox, exist_ok=True)
+    proc = subprocess.Popen(
+        # -I -S：不載入 site-packages，跟網頁版一樣「只有標準函式庫」，
+        # 免得同一份作業在網頁 0 分、在 CLI 卻因為助教電腦裝了 numpy 而滿分
+        [sys.executable, "-I", "-S", "-c", RUNNER, path],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, cwd=sandbox,
+        preexec_fn=_child_setup if os.name == "posix" else None,
+    )
+    try:
+        out, err = proc.communicate(stdin_text, timeout=timeout)
+        if proc.returncode == 3:
+            return out, err[-2000:], "eof"
+        return out, err[-2000:], ("re" if proc.returncode else "ok")
     except subprocess.TimeoutExpired:
-        return "", "執行逾時", "tle"
+        try:                                                   # 連同子孫行程一起殺掉
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except Exception:                                      # noqa: BLE001
+            proc.kill()
+        proc.communicate()
+        return "", "執行超過時間限制（無窮迴圈，或程式還在等下一個 input()）", "tle"
     except Exception as exc:                                   # noqa: BLE001
+        proc.kill()
         return "", str(exc), "re"
-    finally:
-        os.unlink(path)
 
 
 def main():
@@ -139,6 +240,10 @@ def main():
     ap.add_argument("--timeout", type=float, default=8)
     ap.add_argument("--mode", choices=["strict", "trim", "loose"], default="strict")
     ap.add_argument("--detail", default="", help="另外輸出逐筆明細 JSON")
+    ap.add_argument("--strict-output", action="store_true",
+                    help="嚴格模式：程式印完正確答案後才出錯（例如結尾多一個 input()）也算錯")
+    ap.add_argument("--strict-input", action="store_true",
+                    help="嚴格模式：不相容「一個值一個 input()」的寫法")
     args = ap.parse_args()
 
     manifest = load_manifest()
@@ -161,17 +266,45 @@ def main():
                 continue
             student = detect_student(disp)
             prob = problems[qid]
-            rec = {"score": 0.0, "passed": 0, "cases": [], "file": disp}
+            rec = {"score": 0.0, "passed": 0, "reok": 0, "viaAlt": 0, "cases": [], "file": disp}
+            tle_count = 0
+            stopped = ""
             for t in prob["tests"]:
-                out, err, st = run_one(code, t["input"] + "\n", args.timeout)
+                if stopped:
+                    rec["cases"].append({"n": t["n"], "status": "skip", "input": t["input"],
+                                         "expected": t["expected"], "actual": "",
+                                         "stderr": stopped})
+                    continue
+                shown_input = t["input"]
+                via_alt = False
+                out, err, st = run_one(code, t["input"] + "\n", args.timeout, workdir)
+                alt = alt_input(t["input"])
+                if st in ("eof", "re") and alt and not args.strict_input:
+                    out2, err2, st2 = run_one(code, alt + "\n", args.timeout, workdir)
+                    if normalize(out2, args.mode) == normalize(t["expected"], args.mode):
+                        out, err, st = out2, err2, st2
+                        shown_input, via_alt = alt, True
+                        rec["viaAlt"] = rec.get("viaAlt", 0) + 1
+                if st == "eof":
+                    st = "re"
+                output_ok = normalize(out, args.mode) == normalize(t["expected"], args.mode)
                 if st == "ok":
-                    st = "ac" if normalize(out, args.mode) == normalize(t["expected"], args.mode) else "wa"
-                if st == "ac":
-                    rec["passed"] += 1
+                    st = "ac" if output_ok else "wa"
+                elif output_ok:
+                    st = "reok"          # 輸出正確，但程式印完之後才出錯／逾時
+                if st == "tle":
+                    tle_count += 1
+                    if tle_count >= 2:
+                        stopped = "連續逾時兩次，其餘測資直接略過"
+                passed = st == "ac" or (st == "reok" and not args.strict_output)
+                if passed:
                     rec["score"] += prob["pointsPerTest"]
-                rec["cases"].append({"n": t["n"], "status": st, "input": t["input"],
-                                     "expected": t["expected"], "actual": out.rstrip("\n"),
-                                     "stderr": err[-800:]})
+                    rec["passed"] += 1
+                if st == "reok":
+                    rec["reok"] += 1
+                rec["cases"].append({"n": t["n"], "status": st, "input": shown_input,
+                                     "expected": t["expected"], "actual": out[:3000].rstrip("\n"),
+                                     "stderr": err[-800:], "viaAlt": via_alt})
             rec["score"] = round(rec["score"], 2)
             prev = scores.setdefault(student, {}).get(qid)
             if prev is None or rec["score"] > prev["score"]:
@@ -200,10 +333,22 @@ def main():
 
         head = ["學號"] + ["%s(%d)" % (q.upper(), problems[q]["points"]) for q in qids] + \
                ["總分"] + ["%s通過筆數" % q.upper() for q in qids]
+        def safe(v):                       # 避免 Excel 把 =、+ 開頭當公式
+            v = "" if v is None else str(v)
+            return "'" + v if v[:1] in "=+-@" and not v.replace(".", "").isdigit() else v
+
         with io.open(args.out, "w", encoding="utf-8-sig", newline="") as fh:
             w = csv.writer(fh)
             w.writerow(head)
-            w.writerows(rows)
+            w.writerows([[safe(c) for c in r] for r in rows])
+        reok_total = sum(rec.get("reok", 0) for qs in scores.values() for rec in qs.values())
+        alt_total = sum(rec.get("viaAlt", 0) for qs in scores.values() for rec in qs.values())
+        if reok_total:
+            print("\n注意：有 %d 筆「輸出正確但程式印完之後才出錯」（常見於結尾多一個 input()），目前%s。"
+                  % (reok_total, "算錯（--strict-output）" if args.strict_output else "算通過"))
+        if alt_total:
+            print("注意：有 %d 筆是同學把一行輸入拆成好幾個 input() 讀，已改用逐行輸入重跑並以答案為準。"
+                  % alt_total)
         print("\n共 %d 位學生，滿分 %d。成績已寫入 %s" % (len(scores), total_points, args.out))
 
         if args.detail:

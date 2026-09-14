@@ -32,12 +32,38 @@
 |---|---|
 | 正確 | 輸出與正解相符 |
 | 答案錯誤 | 程式跑完了但輸出不對 |
+| 輸出正確但程式出錯 | 答案印對了，程式之後才爆掉（多半是結尾多一個 `input()`）|
 | 執行錯誤 | 語法錯誤 / 例外（會顯示 Traceback，已經濾掉批改程式自己的框架） |
 | 執行逾時 | 預設 8 秒；無窮迴圈或還在等下一個 `input()` |
 
-* 比對預設「嚴格」：只忽略行尾空白與結尾空行。可切成「忽略每行前後空白」或「忽略所有空白與大小寫」。
-* `input("請輸入身高：")` 的提示字**不會**被算進輸出，學生寫提示字不會因此扣分。
-* 同一位學生的同一題如果有多份檔案，全部都會跑，成績取最高並標 ⚠。
+比對預設「嚴格」：只忽略行尾空白與結尾空行。可切成「忽略每行前後空白」或「忽略所有空白與大小寫」。
+同一位學生的同一題如果有多份檔案，全部都會跑，成績取最高並標 ⚠。
+
+### 對同學寬鬆的地方（預設開啟，可關掉）
+
+原則是**只要答案是對的就給分**，不要因為寫法習慣不同而扣到無辜的人：
+
+| 同學的寫法 | 批改程式怎麼處理 |
+|---|---|
+| `input("請輸入身高：")` 有提示字 | 提示字不算輸出，不扣分 |
+| `h=input()` `w=input()` 一個值一個讀 | 第一次跑失敗時，自動把那一行拆成逐行輸入再跑一次，答案對就算對 |
+| `sys.stdin.read()` 一次吃完 / `for line in sys.stdin` | 本來就吃得下 |
+| 印完答案後多一個 `input("按 Enter 結束")` | 輸出正確就給分 |
+| 檔案是 Big5 / UTF-16 / 有 BOM / CRLF | 自動辨識編碼、去掉 BOM，不會因此變成語法錯誤 |
+| `sys.exit()`、`__file__`、把 `sys.stdout` 關掉 | 都不影響批改 |
+
+兩個寬鬆選項都在「開始批改」那一排，關掉就變回嚴格 OJ 的算法；
+命令列版對應 `--strict-input` / `--strict-output`。
+成績表下方會顯示「這次有幾筆是靠寬鬆規則過的」，方便助教抽查。
+
+### 扛得住的狀況（`tools/stress_test.py` 每次都會驗）
+
+無窮迴圈（逾時後把整個直譯器砍掉重開，連續兩次就不再浪費時間）、
+無窮 `print`（輸出上限 200000 字元）、
+`[0]*10**9` 吃記憶體（命令列版有 1 GB 上限，網頁版由 WebAssembly 擋下）、
+無窮遞迴、空檔案、語法錯誤、
+以及**竄改 `builtins` 或 `math` 模組的程式**——每跑完一筆就把全域狀態還原，
+不會讓某一位同學的程式污染排在他後面的所有人。
 
 ---
 
@@ -69,7 +95,11 @@ python3 tools/grade_cli.py 繳交資料夾/                 # 裡面放一堆 �
 python3 tools/grade_cli.py *.zip -o 成績.csv --detail 明細.json
 ```
 
-判定邏輯與網頁版完全一致（同一份 `data/tests.json`、同樣的輸出正規化規則）。
+判定邏輯與網頁版完全一致：同一份 `data/tests.json`、同樣的輸出正規化規則、同一套
+`input()` 攔截方式，而且命令列版用 `python -I -S` 執行（不載入 site-packages），
+避免「網頁版 0 分、助教電腦裝了 numpy 就滿分」這種不一致。
+
+常用選項：`--timeout 8`、`--strict-input`、`--strict-output`、`--detail 明細.json`。
 
 ---
 
@@ -146,7 +176,13 @@ python3 tools/verify_tests.py
 python3 tools/generate_tests.py && python3 tools/verify_tests.py
 ```
 
-`.github/workflows/verify.yml` 也會在每次 push 時自動跑一次驗證。
+另外還有一支抗壓測試，專門檢查批改程式扛不扛得住奇怪的學生程式：
+
+```bash
+python3 tools/stress_test.py
+```
+
+`.github/workflows/verify.yml` 會在每次 push 時自動跑這兩支。
 
 ---
 
@@ -162,7 +198,8 @@ data/mutants.js           故意寫錯的程式（網頁上的示範資料）
 solutions/q1..q6.py       參考解答（只用課內語法：input/split/format/if/while）
 tools/generate_tests.py   產生測資
 tools/verify_tests.py     五道防線驗證（含 mutation testing）
-tools/grade_cli.py        命令列批改（離線備援）
+tools/grade_cli.py        命令列批改（離線備援，判定與網頁版一致）
+tools/stress_test.py      抗壓測試：21 支「同學會交出來的惡夢程式」
 tools/ref_alt/q1..q6.py   第二份獨立實作（對拍用）
 mutants/                  24 支故意寫錯的程式
 tests/qN/NN.in|.out       純文字測資（釋出給學生 / 手動比對用）

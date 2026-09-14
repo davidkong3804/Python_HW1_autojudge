@@ -58,10 +58,19 @@
           }
           if (m.type === 'result' && self.pending && self.pending.id === m.id) {
             var p = self.pending; self.pending = null;
-            clearTimeout(p.timer); p.resolve(m);
+            clearTimeout(p.timer);
+            // Python 直譯器自己死掉（os._exit、abort）-> 這個 worker 不能再用了
+            if (m.fatal) self.restart();
+            p.resolve(m);
           }
         };
-        w.onerror = function (e) { reject(new Error(e.message || 'worker error')); };
+        w.onerror = function (e) {
+          if (self.ready) {            // 開跑之後才死掉：下一次呼叫重開一個
+            self.ready = false; self.booting = null; self.worker = null;
+            return;
+          }
+          reject(new Error(e.message || 'worker error'));
+        };
         w.postMessage({ cmd: 'boot', base: self.base });
       });
       return self.booting;
@@ -133,9 +142,12 @@
     }
     var own = base.match(ID_RE);
     if (own) return own[0].toUpperCase();
+    // 再來才用「最內層資料夾名稱原樣」——絕對不能拿檔名(q1/q2...)當學號，
+    // 否則同一個人的六個檔案會被拆成六位「學生」。
+    if (parts.length) return parts[parts.length - 1];
     var cleaned = base.replace(/(?:^|[^a-z0-9])q\s*[1-6](?![0-9])/i, '')
       .replace(/第\s*[1-6]\s*題/, '').replace(/^[_\-.\s]+|[_\-.\s]+$/g, '');
-    return cleaned || base || '未知';
+    return cleaned || '未知';
   }
 
   /* ------------------------------------------------------------------ */
@@ -229,12 +241,43 @@
     });
   }
 
+  /* 學生的 .py 可能是 Windows 記事本存的：UTF-8 BOM、UTF-16，或台灣常見的 Big5。
+     直接當 UTF-8 讀會變成亂碼甚至 NUL byte，compile 直接失敗 -> 無辜吃 0 分。 */
+  function decodeBytes(buffer) {
+    var bytes = new Uint8Array(buffer);
+    if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+      return stripBom(new TextDecoder('utf-16le').decode(bytes.subarray(2)));
+    }
+    if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+      return stripBom(new TextDecoder('utf-16be').decode(bytes.subarray(2)));
+    }
+    var body = bytes;
+    if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+      body = bytes.subarray(3);
+    }
+    try {
+      return stripBom(new TextDecoder('utf-8', { fatal: true }).decode(body));
+    } catch (e) {
+      try {                                   // 不是合法 UTF-8 -> 當成 Big5
+        return stripBom(new TextDecoder('big5').decode(body));
+      } catch (e2) {
+        return stripBom(new TextDecoder('utf-8').decode(body));
+      }
+    }
+  }
+
+  function stripBom(text) {
+    return text.replace(/^\uFEFF+/, '').replace(/\u0000/g, '');
+  }
+
   function readFileText(file) {
     return new Promise(function (resolve, reject) {
       var r = new FileReader();
-      r.onload = function () { resolve(r.result); };
+      r.onload = function () {
+        try { resolve(decodeBytes(r.result)); } catch (e) { reject(e); }
+      };
       r.onerror = function () { reject(r.error); };
-      r.readAsText(file, 'utf-8');
+      r.readAsArrayBuffer(file);
     });
   }
 
@@ -248,7 +291,9 @@
       zip.forEach(function (rel, entry) {
         if (entry.dir || skipPath(rel)) return;
         if (/\.(py|ipynb)$/i.test(rel)) {
-          jobs.push(entry.async('string').then(function (t) { ingest(prefix + rel, t); }));
+          jobs.push(entry.async('arraybuffer').then(function (buf) {
+            ingest(prefix + rel, decodeBytes(buf));
+          }));
         } else if (/\.zip$/i.test(rel) && depth < 3) {
           jobs.push(entry.async('blob').then(function (b) {
             return loadZip(b, prefix + rel.replace(/\.zip$/i, '') + '/', depth + 1);
@@ -383,6 +428,14 @@
     return lines.join('\n');
   }
 
+  /* 同一筆測資的「逐行版」：把空白與逗號換成換行。
+     有些同學會一個值一個 input() 讀（h=input(); w=input()），
+     照題目格式餵他會 EOF；這時候改用逐行輸入再跑一次，答案對就算對。 */
+  function altInput(text) {
+    var alt = String(text).replace(/[,\s]+/g, '\n').trim();
+    return (alt !== String(text).trim() && alt.indexOf('\n') >= 0) ? alt : '';
+  }
+
   function problemOf(qid) {
     return PROBLEMS.filter(function (p) { return p.id === qid; })[0];
   }
@@ -396,8 +449,19 @@
     return {
       mode: $('compareMode').value,
       timeout: Math.max(1, parseInt($('timeout').value, 10) || 8) * 1000,
-      stopOnFirst: $('stopOnFirst').checked
+      stopOnFirst: $('stopOnFirst').checked,
+      lenientRe: $('lenientRe') ? $('lenientRe').checked : true,
+      lenientInput: $('lenientInput') ? $('lenientInput').checked : true
     };
+  }
+
+  function alt2text(input) {
+    return altInput(input) + '\n（原本是「' + input + '」一行，這位同學是一個值一個 input() 讀的）';
+  }
+
+  function cut(text, n) {
+    text = String(text === undefined || text === null ? '' : text);
+    return text.length > n ? text.slice(0, n) + '…（已截斷）' : text;
   }
 
   function busy(on) {
@@ -422,27 +486,56 @@
       var prob = problemOf(sub.qid);
       chain = chain.then(function () {
         var rec = {
-          score: 0, max: prob.points, cases: [], passed: 0, file: sub.path, qid: prob.id
+          score: 0, max: prob.points, cases: [], passed: 0, reok: 0, viaAlt: 0,
+          file: sub.path, qid: prob.id
         };
         var inner = Promise.resolve();
-        var stopped = false;
+        var stopped = '';
+        var tleCount = 0;
         prob.tests.forEach(function (t) {
           inner = inner.then(function () {
             if (stopped) {
-              rec.cases.push({ n: t.n, status: 'skip', input: t.input, expected: t.expected, actual: '', stderr: '', note: t.note, kind: t.kind });
+              rec.cases.push({ n: t.n, status: 'skip', input: t.input, expected: t.expected,
+                               actual: '', stderr: '', note: t.note, kind: t.kind, why: stopped });
               done++;
               return;
             }
             return Engine.run(sub.code, t.input + '\n', cfg.timeout).then(function (r) {
+              // 讀到 EOF（同學一個值一個 input()）-> 換成逐行輸入再給一次機會
+              var alt = altInput(t.input);
+              // 不只 EOF：float("1.75 68") 這種也是「他一個值一個 input() 讀」造成的
+              if (cfg.lenientInput && r.status === 'error' && alt) {
+                return Engine.run(sub.code, alt + '\n', cfg.timeout).then(function (r2) {
+                  if (normalize(r2.stdout, cfg.mode) === normalize(t.expected, cfg.mode)) {
+                    r2.viaAlt = true;
+                    return r2;
+                  }
+                  return r;                                  // 換了也沒用，回報原本的錯
+                });
+              }
+              return r;
+            }).then(function (r) {
+              var outputOk = normalize(r.stdout, cfg.mode) === normalize(t.expected, cfg.mode);
               var status;
-              if (r.status === 'timeout') status = 'tle';
-              else if (r.status === 'error' || r.status === 'overflow') status = 're';
-              else status = normalize(r.stdout, cfg.mode) === normalize(t.expected, cfg.mode) ? 'ac' : 'wa';
-              if (status === 'ac') { rec.passed++; rec.score += prob.pointsPerTest; }
-              else if (cfg.stopOnFirst) stopped = true;
+              if (r.status === 'ok') status = outputOk ? 'ac' : 'wa';
+              else if (outputOk) status = 'reok';          // 輸出對了，但程式後來才出事
+              else if (r.status === 'timeout') status = 'tle';
+              else status = 're';
+
+              var passed = status === 'ac' || (status === 'reok' && cfg.lenientRe);
+              if (passed) { rec.score += prob.pointsPerTest; rec.passed++; }
+              if (status === 'reok') rec.reok++;
+              if (r.viaAlt) rec.viaAlt++;
+              if (status === 'tle') tleCount++;
+
+              if (!passed && cfg.stopOnFirst) stopped = '前面已經錯了，依設定略過剩下的測資';
+              // 無窮迴圈的人不要讓他把 10 次逾時都跑完（每次逾時都要重開直譯器）
+              if (tleCount >= 2 && !stopped) stopped = '連續逾時兩次，直接判定其餘測資也會逾時';
+
               rec.cases.push({
-                n: t.n, status: status, input: t.input, expected: t.expected,
-                actual: r.stdout, stderr: r.stderr, note: t.note, kind: t.kind, ms: r.ms
+                n: t.n, status: status, input: r.viaAlt ? alt2text(t.input) : t.input,
+                expected: t.expected, actual: cut(r.stdout, 3000), stderr: cut(r.stderr, 1500),
+                note: t.note, kind: t.kind, ms: r.ms, viaAlt: !!r.viaAlt
               });
               done++;
               $('bar').style.width = Math.round(done / totalRuns * 100) + '%';
@@ -558,12 +651,35 @@
       tbody.appendChild(tr);
     });
 
+    var reokTotal = 0, altTotal = 0;
+    students.forEach(function (name) {
+      PROBLEMS.forEach(function (p) {
+        var rec = out[name][p.id];
+        if (rec) { reokTotal += rec.reok || 0; altTotal += rec.viaAlt || 0; }
+      });
+    });
     $('summaryStat').textContent = students.length + ' 位學生 · 平均 ' +
       (students.length ? Math.round(sum / students.length * 10) / 10 : 0) + ' 分 · 滿分 ' + full + ' 位';
+    var noteBox = $('gradeNote');
+    var msgs = [];
+    if (reokTotal) {
+      msgs.push('有 ' + reokTotal + ' 筆「輸出完全正確，但程式印完之後才出錯」'
+        + '（最常見是結尾多一個 input("按 Enter")），目前'
+        + ($('lenientRe').checked ? '算通過' : '算錯') + '。');
+    }
+    if (altTotal) {
+      msgs.push('有 ' + altTotal + ' 筆是同學把一行輸入拆成好幾個 input() 讀，'
+        + '已改用逐行輸入重跑並以答案為準。');
+    }
+    noteBox.hidden = msgs.length === 0;
+    noteBox.textContent = msgs.join(' ') + (msgs.length ? '（選項在上面，改完要重新批改）' : '');
     $('resultCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  var STATUS_TEXT = { ac: '正確', wa: '答案錯誤', re: '執行錯誤', tle: '執行逾時', skip: '未執行' };
+  var STATUS_TEXT = {
+    ac: '正確', wa: '答案錯誤', re: '執行錯誤', tle: '執行逾時',
+    reok: '輸出正確但程式出錯', skip: '未執行'
+  };
 
   function renderDetail(student, prob, rec) {
     var box = $('detail');
@@ -580,7 +696,7 @@
       head.appendChild(el('strong', '', '#' + c.n));
       head.appendChild(el('span', 'kind ' + c.kind,
         c.kind === 'example' ? '題目範例' : (c.kind === 'special' ? '特殊測資' : '隨機測資')));
-      head.appendChild(el('span', 'muted small', c.note));
+      head.appendChild(el('span', 'muted small', c.why ? c.note + '（' + c.why + '）' : c.note));
       wrap.appendChild(head);
 
       if (c.status !== 'ac' && c.status !== 'skip') {
@@ -642,6 +758,7 @@
     return rows.map(function (r) {
       return r.map(function (v) {
         v = String(v);
+        if (/^[=+\-@]/.test(v)) v = "'" + v;        // 避免 Excel 把它當公式
         return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
       }).join(',');
     }).join('\n');
