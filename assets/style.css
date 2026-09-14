@@ -70,6 +70,7 @@ footer { padding: 8px 16px 40px; }
 .engine { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
 .engine .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--warn); }
 .engine.ready .dot { background: var(--ok); }
+.engine.idle .dot { background: var(--muted); }
 .engine.fail .dot { background: var(--bad); }
 
 .tablewrap { overflow-x: auto; }
