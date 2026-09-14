@@ -109,6 +109,48 @@
     $('engineText').textContent = text;
   }
 
+  /* Python 執行環境壓縮後約 5.5 MB，網路慢的話要等一下子。
+     自己先抓一次是為了「看得到進度」——抓完會留在瀏覽器快取，
+     等一下 Pyodide 自己抓同樣的網址就直接命中，不會抓第二次。 */
+  var VENDOR_FILES = [
+    'vendor/pyodide/pyodide.js',
+    'vendor/pyodide/pyodide-lock.json',
+    'vendor/pyodide/pyodide.asm.js',
+    'vendor/pyodide/python_stdlib.zip',
+    'vendor/pyodide/pyodide.asm.wasm'
+  ];
+
+  function mb(bytes) { return (bytes / 1048576).toFixed(1); }
+
+  function preloadEngine(onProgress) {
+    var sizes = {}, got = {};
+    function tick() {
+      var total = 0, loaded = 0;
+      VENDOR_FILES.forEach(function (u) { total += sizes[u] || 0; loaded += got[u] || 0; });
+      onProgress(loaded, total);
+    }
+    return Promise.all(VENDOR_FILES.map(function (u) {
+      return fetch(u).then(function (res) {
+        if (!res.ok) return;
+        sizes[u] = parseInt(res.headers.get('content-length') || '0', 10);
+        got[u] = 0;
+        tick();
+        if (!res.body || !res.body.getReader) return res.arrayBuffer().then(function (b) {
+          got[u] = b.byteLength; tick();
+        });
+        var reader = res.body.getReader();
+        return (function pump() {
+          return reader.read().then(function (r) {
+            if (r.done) return;
+            got[u] += r.value.length;
+            tick();
+            return pump();
+          });
+        })();
+      }).catch(function () { /* 抓不到就算了，等下讓 Pyodide 自己想辦法 */ });
+    })).then(tick);
+  }
+
   /* ------------------------------------------------------------------ */
   /* 路徑 -> (學號, 題號)                                                 */
   /* ------------------------------------------------------------------ */
@@ -834,9 +876,24 @@
     if (location.protocol === 'file:') {
       setEngineState('fail', '請用 http 開啟（GitHub Pages，或 python3 -m http.server）');
     } else {
-      setEngineState('loading', 'Python 執行環境載入中…');
-      Engine.boot().then(function () {
-        setEngineState('ready', 'Python 執行環境就緒（Pyodide，不需連外網）');
+      var t0 = Date.now();
+      setEngineState('loading', '第一次開啟要下載 Python 執行環境…');
+      var preloading = preloadEngine(function (loaded, total) {
+        if (total > 0) {
+          setEngineState('loading', '下載 Python 執行環境 ' + mb(loaded) + ' / ' + mb(total)
+            + ' MB（' + Math.round(loaded / total * 100) + '%）—— 只有第一次要載');
+        }
+      });
+      // 保險：預載卡住超過 90 秒就不等了，直接讓 Pyodide 自己去抓
+      Promise.race([
+        preloading,
+        new Promise(function (r) { setTimeout(r, 90000); })
+      ]).then(function () {
+        setEngineState('loading', '啟動 Python 中…');
+        return Engine.boot();
+      }).then(function () {
+        setEngineState('ready', 'Python 執行環境就緒（花了 '
+          + Math.round((Date.now() - t0) / 1000) + ' 秒，重新整理後會快很多）');
       }).catch(function (e) {
         setEngineState('fail', '載入失敗：' + e.message);
       });
