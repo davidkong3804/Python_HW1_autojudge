@@ -500,8 +500,8 @@
   }
 
   /* 同一筆測資的「逐行版」：把空白與逗號換成換行。
-     有些同學會一個值一個 input() 讀（h=input(); w=input()），
-     照題目格式餵他會 EOF；這時候改用逐行輸入再跑一次，答案對就算對。 */
+     老師的規定是「一行就是一次 input()」，所以這是預設關閉的非標準選項；
+     打開之後，一個值一個 input() 讀的同學會用逐行輸入再跑一次。 */
   function altInput(text) {
     var alt = String(text).replace(/[,\s]+/g, '\n').trim();
     return (alt !== String(text).trim() && alt.indexOf('\n') >= 0) ? alt : '';
@@ -522,7 +522,7 @@
       timeout: Math.max(1, parseInt($('timeout').value, 10) || 8) * 1000,
       stopOnFirst: $('stopOnFirst').checked,
       lenientRe: $('lenientRe') ? $('lenientRe').checked : true,
-      lenientInput: $('lenientInput') ? $('lenientInput').checked : true
+      lenientInput: $('lenientInput') ? $('lenientInput').checked : false
     };
   }
 

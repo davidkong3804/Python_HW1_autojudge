@@ -42,8 +42,8 @@ CASES = [
     ("trailing_input", (GOOD + "input('按 Enter 結束')\n").encode(), 15,
      "印完答案又 input() 等按 Enter"),
     ("two_inputs", ("h = float(input())\nw = float(input())\n"
-                    "print(format(w/(h*h),'.2f'))\n").encode(), 15,
-     "一個值一個 input() 讀（寬鬆模式要接受）"),
+                    "print(format(w/(h*h),'.2f'))\n").encode(), 0,
+     "把一行拆成兩次 input()（老師規定一行一次，要判錯）"),
     ("readall", ("import sys\nd = sys.stdin.read().split()\n"
                  "print(format(float(d[1])/(float(d[0])**2), '.2f'))\n").encode(), 15,
      "一次把 stdin 讀完"),

@@ -65,7 +65,7 @@ def normalize(text, mode="strict"):
 
 
 def alt_input(text):
-    """同一筆測資的逐行版：有些同學一個值一個 input() 讀。"""
+    """同一筆測資的逐行版（非標準，預設不用）：老師規定一行就是一次 input()。"""
     alt = re.sub(r"[,\s]+", "\n", str(text)).strip()
     return alt if (alt != str(text).strip() and "\n" in alt) else ""
 
@@ -242,8 +242,9 @@ def main():
     ap.add_argument("--detail", default="", help="另外輸出逐筆明細 JSON")
     ap.add_argument("--strict-output", action="store_true",
                     help="嚴格模式：程式印完正確答案後才出錯（例如結尾多一個 input()）也算錯")
-    ap.add_argument("--strict-input", action="store_true",
-                    help="嚴格模式：不相容「一個值一個 input()」的寫法")
+    ap.add_argument("--lenient-input", action="store_true",
+                    help="非標準：把一行拆成多次 input() 讀的同學，改用逐行輸入重跑一次再判定"
+                         "（老師規定一行就是一次 input()，所以預設關閉）")
     args = ap.parse_args()
 
     manifest = load_manifest()
@@ -279,7 +280,7 @@ def main():
                 via_alt = False
                 out, err, st = run_one(code, t["input"] + "\n", args.timeout, workdir)
                 alt = alt_input(t["input"])
-                if st in ("eof", "re") and alt and not args.strict_input:
+                if st in ("eof", "re") and alt and args.lenient_input:
                     out2, err2, st2 = run_one(code, alt + "\n", args.timeout, workdir)
                     if normalize(out2, args.mode) == normalize(t["expected"], args.mode):
                         out, err, st = out2, err2, st2
