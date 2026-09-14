@@ -14,7 +14,12 @@
 
 ## 一、怎麼用（助教批改）
 
-1. 打開 GitHub Pages 網址（或在本機執行 `python3 -m http.server` 後開 `http://localhost:8000`）。
+1. 打開批改網頁。兩個方式：
+   * **GitHub Pages 網址** —— 第一次開要下載 Python 執行環境（壓縮後約 5.5 MB），
+     網路慢的話可能要等 30～60 秒，右上角會顯示下載進度；下載完存在瀏覽器快取裡，之後重開只要幾秒。
+   * **本機開（要批很多份時建議這個）** —— 雙擊 `start_local.command`（macOS），
+     或在這個資料夾執行 `python3 -m http.server 8765` 再開 `http://localhost:8765/`。
+     Python 環境直接從硬碟讀，**三秒就好而且完全不用網路**。
 2. 等右上角顯示「Python 執行環境就緒」。
 3. 把學生的 `學號_HW1.zip` 全部拖進去 —— 幾十份一起拖沒問題，
    COOL 整包下載那種「zip 裡面還有 zip」也吃得下。
@@ -190,6 +195,7 @@ python3 tools/stress_test.py
 
 ```
 index.html                批改網頁（GitHub Pages 入口）
+start_local.command       macOS 雙擊即可在本機開網頁（不用等下載，最快）
 assets/app.js             介面 + 批改流程（檔名辨識、比對、成績表、CSV）
 assets/worker.js          Pyodide worker：執行學生程式、餵 input、攔 stdout、逾時砍掉重開
 data/tests.js / .json     測資（網頁與 CLI 共用同一份）
