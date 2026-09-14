@@ -1,8 +1,8 @@
 # Q2 Simple Calculator (reference solution)
-data = input().split(',')
-op = data[0]
-x = float(data[1])
-y = float(data[2])
+op, x, y = input().split(',')
+x = float(x)
+y = float(y)
+
 if op == '+':
     print(format(x + y, '.2f'))
 elif op == '-':

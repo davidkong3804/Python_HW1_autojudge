@@ -208,5 +208,7 @@ vendor/pyodide/           Pyodide 執行環境（約 12 MB，讓網頁離線可�
 vendor/jszip/             解 zip 用
 ```
 
-參考解答只使用課內語法：`input()`、`split()`、`float()`、`int()`、`format()`、`if/elif/else`、
-`while`、`for`、`len()`、字串串接、`** 0.5`（不 import `math`）。
+參考解答只使用課內語法：`input()`、`split()`、`format()`、`float()`、`int()`、
+多重指定（`a, b, c = input().split()`）、`if/elif/else`、`while`、`for`、`len()`、
+字串串接、`** 0.5`。**沒有**用到 list 索引（`data[0]`）、`sorted()`、`map()`、
+串列推導式，也沒有 `import math`。
