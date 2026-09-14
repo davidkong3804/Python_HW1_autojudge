@@ -1,0 +1,20 @@
+name: 驗證測資
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: 重新產生測資（確認與參考解答一致）
+        run: |
+          python3 tools/generate_tests.py
+          git diff --exit-code -- data tests || (echo "::error::測資檔與 generate_tests.py 的輸出不一致，請重跑 generate_tests.py 後再 commit" && exit 1)
+      - name: 驗證測資（含 mutation testing）
+        run: python3 tools/verify_tests.py

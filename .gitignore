@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.DS_Store
+hw1_成績.csv
+hw1_批改明細.json

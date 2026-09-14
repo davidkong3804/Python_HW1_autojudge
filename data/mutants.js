@@ -1,0 +1,27 @@
+// 由 tools/generate_tests.py 自動產生，請勿手動修改
+window.HW_MUTANTS = {
+ "q1_round_nopad.py": "# BUG: 用 round() 直接印，不會補到小數第二位\nd = input().split()\nh = float(d[0]); w = float(d[1])\nprint(round(w / (h * h), 2))\n",
+ "q1_swapped.py": "# BUG: 身高體重順序相反\nd = input().split()\nw = float(d[0]); h = float(d[1])\nprint(format(w / (h * h), '.2f'))\n",
+ "q1_times2.py": "# BUG: 身高乘以 2 而不是平方\nd = input().split()\nh = float(d[0]); w = float(d[1])\nprint(format(w / (h * 2), '.2f'))\n",
+ "q1_truncate.py": "# BUG: 無條件捨去而不是四捨五入\nd = input().split()\nh = float(d[0]); w = float(d[1])\nbmi = w / (h * h)\nprint(format(int(bmi * 100) / 100, '.2f'))\n",
+ "q2_floordiv.py": "# BUG: 除法用 //\nd = input().split(',')\nop = d[0]; x = float(d[1]); y = float(d[2])\nif op == '+': print(format(x + y, '.2f'))\nelif op == '-': print(format(x - y, '.2f'))\nelif op == '*': print(format(x * y, '.2f'))\nelif y == 0: print('Error')\nelse: print(format(x // y, '.2f'))\n",
+ "q2_int_cast.py": "# BUG: 用 int() 轉換，小數會被截掉\nd = input().split(',')\nop = d[0]; x = int(float(d[1])); y = int(float(d[2]))\nif op == '+': print(format(x + y, '.2f'))\nelif op == '-': print(format(x - y, '.2f'))\nelif op == '*': print(format(x * y, '.2f'))\nelif y == 0: print('Error')\nelse: print(format(x / y, '.2f'))\n",
+ "q2_str_zero.py": "# BUG: 用字串比對判斷除數是否為 0\nd = input().split(',')\nop = d[0]\nif op == '/' and d[2] == '0':\n    print('Error')\nelse:\n    x = float(d[1]); y = float(d[2])\n    if op == '+': r = x + y\n    elif op == '-': r = x - y\n    elif op == '*': r = x * y\n    else: r = x / y\n    print(format(r, '.2f'))\n",
+ "q2_wrong_operand.py": "# BUG: 檢查被除數是不是 0\nd = input().split(',')\nop = d[0]; x = float(d[1]); y = float(d[2])\nif op == '/' and x == 0:\n    print('Error')\nelse:\n    if op == '+': r = x + y\n    elif op == '-': r = x - y\n    elif op == '*': r = x * y\n    else: r = x / y\n    print(format(r, '.2f'))\n",
+ "q3_one_is_prime.py": "# BUG: 沒有處理 n = 1\nn = int(input())\nprime = True\ni = 2\nwhile i * i <= n:\n    if n % i == 0:\n        prime = False\n    i += 1\ns = 'Prime' if prime else 'Not Prime'\nprint(s + (',Even' if n % 2 == 0 else ',Odd'))\n",
+ "q3_parity_swapped.py": "# BUG: 奇偶判斷相反\nn = int(input())\nprime = n >= 2\ni = 2\nwhile i * i <= n:\n    if n % i == 0:\n        prime = False\n    i += 1\ns = 'Prime' if prime else 'Not Prime'\nprint(s + (',Odd' if n % 2 == 0 else ',Even'))\n",
+ "q3_range_inclusive.py": "# BUG: 迴圈跑到 n（含），任何數都會被 n%n==0 判成不是質數\nn = int(input())\nprime = n >= 2\nfor i in range(2, n + 1):\n    if n % i == 0:\n        prime = False\ns = 'Prime' if prime else 'Not Prime'\nprint(s + (',Even' if n % 2 == 0 else ',Odd'))\n",
+ "q3_sqrt_strict.py": "# BUG: 迴圈條件是 i*i < n，漏掉完全平方數\nn = int(input())\nprime = n >= 2\ni = 2\nwhile i * i < n:\n    if n % i == 0:\n        prime = False\n    i += 1\ns = 'Prime' if prime else 'Not Prime'\nprint(s + (',Even' if n % 2 == 0 else ',Odd'))\n",
+ "q4_count_digits.py": "# BUG: 數數字個數而不是加總\ns = input()\nc = 0\nfor ch in s:\n    if ch.isdigit():\n        c += 1\nprint(str(c) + ',' + str(len(s)))\n",
+ "q4_isdigit_whole.py": "# BUG: 只有整串都是數字才加總\ns = input()\nif s.isdigit():\n    t = 0\n    for ch in s:\n        t += int(ch)\nelse:\n    t = 0\nprint(str(t) + ',' + str(len(s)))\n",
+ "q4_len_off_by_one.py": "# BUG: 長度少算 1\ns = input()\nt = 0\nfor ch in s:\n    if ch.isdigit():\n        t += int(ch)\nprint(str(t) + ',' + str(len(s) - 1))\n",
+ "q4_ord_all.py": "# BUG: 沒有過濾英文字母，全部都拿去算\ns = input()\nt = 0\nfor ch in s:\n    t += ord(ch) - 48\nprint(str(t) + ',' + str(len(s)))\n",
+ "q5_lowercase.py": "# BUG: 大小寫不符合題目要求\np = input()\nn = len(p)\nif n < 6:\n    print('weak')\nelif n <= 10:\n    print('moderate')\nelse:\n    print('strong')\n",
+ "q5_split.py": "# BUG: 多此一舉用 split()，含空格的密碼會被切斷\np = input().split()[0]\nif len(p) < 6:\n    print('Weak')\nelif len(p) <= 10:\n    print('Moderate')\nelse:\n    print('Strong')\n",
+ "q5_strong_at_10.py": "# BUG: 長度 10 被判成 Strong\np = input()\nif len(p) < 6:\n    print('Weak')\nelif len(p) < 10:\n    print('Moderate')\nelse:\n    print('Strong')\n",
+ "q5_weak_at_6.py": "# BUG: 長度 6 被判成 Weak\np = input()\nif len(p) <= 6:\n    print('Weak')\nelif len(p) <= 10:\n    print('Moderate')\nelse:\n    print('Strong')\n",
+ "q6_abs_sort.py": "# BUG: 用絕對值大小排序\nd = input().split()\na = float(d[0]); b = float(d[1]); c = float(d[2])\ns = (b * b - 4 * a * c) ** 0.5\nr = sorted([(-b + s) / (2 * a), (-b - s) / (2 * a)], key=abs, reverse=True)\nprint(format(r[0], '.3f') + ' ' + format(r[1], '.3f'))\n",
+ "q6_comma.py": "# BUG: 用逗號分隔而不是空白\nd = input().split()\na = float(d[0]); b = float(d[1]); c = float(d[2])\ns = (b * b - 4 * a * c) ** 0.5\nr = sorted([(-b + s) / (2 * a), (-b - s) / (2 * a)], reverse=True)\nprint(format(r[0], '.3f') + ',' + format(r[1], '.3f'))\n",
+ "q6_nosort.py": "# BUG: 沒有由大到小排序，a 為負數時順序相反\nd = input().split()\na = float(d[0]); b = float(d[1]); c = float(d[2])\ns = (b * b - 4 * a * c) ** 0.5\nprint(format((-b + s) / (2 * a), '.3f') + ' ' + format((-b - s) / (2 * a), '.3f'))\n",
+ "q6_two_decimals.py": "# BUG: 印到小數第二位\nd = input().split()\na = float(d[0]); b = float(d[1]); c = float(d[2])\ns = (b * b - 4 * a * c) ** 0.5\nr = sorted([(-b + s) / (2 * a), (-b - s) / (2 * a)], reverse=True)\nprint(format(r[0], '.2f') + ' ' + format(r[1], '.2f'))\n"
+};

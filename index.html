@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HW1 自動批改（助教用）</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <h1>HW1 自動批改<span class="sub">助教用 · 全部在瀏覽器裡跑，程式不會上傳</span></h1>
+    <div id="engine" class="engine loading"><span class="dot"></span><span id="engineText">Python 執行環境載入中…</span></div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- 步驟 1 -->
+  <section class="card">
+    <h2><span class="step">1</span>載入學生程式</h2>
+    <div id="drop" class="drop">
+      <p class="big">把學生的 <code>學號_HW1.zip</code> 拖進來</p>
+      <p class="muted">幾十份一起拖也可以；COOL 整包下載的「zip 裡面還有 zip」也吃得下。散裝 .py、整個資料夾同樣支援。</p>
+      <div class="btns">
+        <button class="btn" id="pickFiles">選擇 .zip / .py 檔</button>
+        <button class="btn" id="pickDir">選擇整個資料夾</button>
+        <button class="btn ghost" id="loadDemo">載入示範（參考解答＋故意寫錯的程式）</button>
+      </div>
+      <input type="file" id="fileInput" multiple accept=".py,.zip,.ipynb" hidden>
+      <input type="file" id="dirInput" webkitdirectory directory multiple hidden>
+    </div>
+    <details class="hint">
+      <summary>檔名怎麼取？（自動辨識規則）</summary>
+      <ul>
+        <li>公告格式：<code>B11901234_HW1.zip → B11901234_HW1/q1.py ~ q6.py</code>，學號與題號都會自動抓出來。</li>
+        <li>COOL 下載的檔名被加料也沒關係：<code>wang_98765_43210_B11901234_HW1.zip</code> 一樣抓得到 <code>B11901234</code>。</li>
+        <li>其他寫法：<code>B11901234_q3.py</code>、<code>hw1_3.py</code>、<code>第3題.py</code> 也認得。</li>
+        <li>萬一有人交 Colab 的 <code>.ipynb</code>：會自動拆成一格一格的 code cell（<code>!pip</code>、<code>%magic</code> 會被略過），再用「自動配對」判斷每一格是哪一題。</li>
+        <li>認不出來也沒關係，下面的表格可以直接用下拉選單改。</li>
+      </ul>
+    </details>
+  </section>
+
+  <!-- 步驟 2 -->
+  <section class="card" id="filesCard" hidden>
+    <h2><span class="step">2</span>確認對應關係 <span id="fileCount" class="pill"></span></h2>
+    <div class="tablewrap">
+      <table id="filesTable">
+        <thead><tr><th>檔案</th><th>學號</th><th>題號</th><th>行數</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="row gap">
+      <button class="btn" id="autoMatch">自動配對（用第 1、2 筆測資試跑判斷題號）</button>
+      <button class="btn danger ghost" id="clearFiles">全部清空</button>
+      <span id="fileWarn" class="warn"></span>
+    </div>
+  </section>
+
+  <!-- 步驟 3 -->
+  <section class="card">
+    <h2><span class="step">3</span>開始批改</h2>
+    <div class="row gap wrap-row">
+      <button class="btn primary" id="runAll" disabled>開始批改</button>
+      <button class="btn" id="selfTest">先驗證參考解答（應得 100 分）</button>
+      <label class="opt">單筆測資逾時
+        <input type="number" id="timeout" value="8" min="1" max="60" step="1"> 秒
+      </label>
+      <label class="opt">比對方式
+        <select id="compareMode">
+          <option value="strict" selected>嚴格（僅忽略行尾空白與結尾空行）</option>
+          <option value="trim">忽略每行前後空白</option>
+          <option value="loose">忽略所有空白與英文大小寫</option>
+        </select>
+      </label>
+      <label class="opt"><input type="checkbox" id="stopOnFirst"> 每題錯一筆就跳過剩下的（比較快）</label>
+    </div>
+    <div id="progressBox" hidden>
+      <div class="bar"><div id="bar"></div></div>
+      <p id="progressText" class="muted"></p>
+    </div>
+  </section>
+
+  <!-- 結果 -->
+  <section class="card" id="resultCard" hidden>
+    <h2><span class="step">4</span>成績</h2>
+    <div class="row gap wrap-row">
+      <button class="btn" id="exportCsv">匯出 CSV（Excel 可直接開）</button>
+      <button class="btn" id="exportJson">匯出 JSON（含每筆細節）</button>
+      <span id="summaryStat" class="pill"></span>
+    </div>
+    <div class="tablewrap">
+      <table id="scoreTable">
+        <thead><tr id="scoreHead"></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="muted small">點任何一格可以看那一題 10 筆測資的逐筆結果與差異。</p>
+    <div id="detail" class="detail" hidden></div>
+  </section>
+
+  <!-- 測資檢視 -->
+  <section class="card">
+    <h2>測資與參考解答</h2>
+    <div class="row gap wrap-row">
+      <select id="viewQ"></select>
+      <button class="btn" id="viewTests">檢視測資</button>
+      <button class="btn ghost" id="viewSol">檢視參考解答</button>
+      <button class="btn ghost" id="downloadTests">下載測資（.zip 用的純文字格式）</button>
+    </div>
+    <div id="viewer" class="viewer" hidden></div>
+  </section>
+</main>
+
+<footer class="wrap muted small">
+  測資由 <code>tools/generate_tests.py</code> 產生、<code>tools/verify_tests.py</code> 驗證（含 mutation testing）。
+  執行環境：Pyodide（CPython 3.x WebAssembly），完全在本機瀏覽器執行。
+</footer>
+
+<script src="vendor/jszip/jszip.min.js"></script>
+<script src="data/tests.js"></script>
+<script src="data/solutions.js"></script>
+<script src="data/mutants.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

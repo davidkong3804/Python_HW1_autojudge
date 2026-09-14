@@ -1,0 +1,6 @@
+# Q1 BMI Calculator (reference solution)
+data = input().split()
+height = float(data[0])
+weight = float(data[1])
+bmi = weight / (height * height)
+print(format(bmi, '.2f'))
