@@ -121,11 +121,46 @@ HW1 六題的測資**每題都只有一行**，所以正解就是一次 `input()
 
 ---
 
-## 四、命令列批改（離線備援）
+## 四、調整測資與配分（網頁最下面的「測資與配分設定」）
+
+批改頁面最下面有一區可以自己改測資與配分，不用改程式、不用重新部署。
+
+**關掉某些測資。** 取消勾選就不列入這次批改。配分模型是**題目總分固定，啟用中的測資平分**——
+關掉一組不會讓總分變少，而是讓剩下的每一組變重。例如 Q2 關掉 2 組，剩下 3 組就從每組 3 分變成每組 5 分，
+Q2 仍然是 15 分，總分仍然是 100。
+
+**加自己的測資。** 只要填 input，**正確輸出由頁面實際執行 `solutions/qN.py` 參考解答產生**，
+不用自己打答案。這和 `tools/generate_tests.py` 的原則一致：答案一律是跑出來的，不是手寫的，
+所以不會有「助教把標準答案打錯，全班跟著錯」這種事。參考解答跑這筆輸入會出錯（例如格式不合題目規定），
+就不會讓你加進去，並且會把錯誤訊息顯示出來。
+
+**改每題配分。** 直接改數字。總分不等於 100 時會紅字警告，因為那通常是誤操作。
+某一題被關到一組測資都不剩時也會警告——那一題所有人都會是 0 分。
+
+幾個要知道的：
+
+- 設定存在**你這台電腦的瀏覽器**裡，不會跟著網址跑。換電腦或換助教請用「匯出設定 JSON」／「匯入設定 JSON」。
+  兩個助教用不同設定批改同一份作業會出事，設定要傳。
+- 成績表、匯出的 CSV、匯出的 JSON **都會附上這次用了哪些設定**（幾組測資、關掉了哪些、配分改了什麼）。
+  設定可以無聲地改變成績，所以報表上一定要留下紀錄。
+- 批改跑到一半改設定不會影響正在跑的那一輪——每次批改開始時會把設定固定下來，
+  不會發生前幾位同學用一把尺、後幾位用另一把。
+- 匯出的 JSON 可以直接交給命令列版，讓兩邊用同一套設定：
+
+```bash
+python3 tools/grade_cli.py 繳交資料夾/ --config hw1_批改設定.json
+```
+
+想回到原廠測資與配分，按「全部恢復原廠」。
+
+---
+
+## 五、命令列批改（離線備援）
 
 ```bash
 python3 tools/grade_cli.py 繳交資料夾/                    # 裡面放一堆 學號_HW1.zip
 python3 tools/grade_cli.py *.zip -o 成績.csv --detail 明細.json
+python3 tools/grade_cli.py 繳交資料夾/ --config 設定.json   # 套用網頁上調好的測資與配分
 ```
 
 判定邏輯與網頁版**完全一致**：同一份 `data/tests.json`、同樣的輸出正規化、同一套 `input()` 攔截方式，
@@ -135,7 +170,7 @@ python3 tools/grade_cli.py *.zip -o 成績.csv --detail 明細.json
 
 ---
 
-## 五、測資怎麼出、怎麼驗的（要接手維護再看）
+## 六、測資怎麼出、怎麼驗的（要接手維護再看）
 
 `tools/generate_tests.py`：每題 5 組手工挑選的特殊測資，預期輸出一律**實際執行參考解答**產生，不手寫答案。
 測資不採用作業 PDF 上的範例（學生手上已經有，沒有鑑別度），也不放隨機測資——
@@ -156,6 +191,7 @@ python3 tools/grade_cli.py *.zip -o 成績.csv --detail 明細.json
 ```bash
 python3 tools/verify_tests.py    # 測資正確性（五道防線）
 python3 tools/test_detect.py     # 學號 / 題號辨識
+python3 tools/test_config.py     # 測資與配分設定的算法
 python3 tools/stress_test.py     # 批改程式扛不扛得住奇怪的學生程式
 ```
 
@@ -171,7 +207,11 @@ BOM / Big5 / UTF-16，以及**竄改 `builtins` 或 `math` 的程式**（每跑�
 別人頭上，而且同一個人的六個檔可能被拆成六位「學生」。它同時會用 node 把 `assets/app.js`
 的辨識段落抓出來跑一遍，確認網頁版與 CLI 版對同一條路徑給出相同答案。
 
-三支都接在 `.github/workflows/verify.yml`，每次 push 自動跑。
+`test_config.py` 跑一批「測資與配分設定」的情境，檢查配分算得對，並且同樣用 node 把
+`assets/app.js` 的設定段落抓出來跟 `grade_cli.py` 對拍。這套規則被寫了兩次（網頁一次、
+命令列一次），只要有一點不一樣，同一份作業在兩邊就會算出不同的成績而且沒人會發現。
+
+四支都接在 `.github/workflows/verify.yml`，每次 push 自動跑。
 
 **還是請三到四位助教各自寫一次作業、跑過測資**：自動驗證擋得住實作 bug，
 擋不住「題目本身有兩種合理解讀」。
@@ -190,14 +230,15 @@ BOM / Big5 / UTF-16，以及**竄改 `builtins` 或 `math` 的程式**（每跑�
 
 ```bash
 python3 tools/generate_tests.py && python3 tools/verify_tests.py \
-  && python3 tools/test_detect.py && python3 tools/stress_test.py
+  && python3 tools/test_detect.py && python3 tools/test_config.py \
+  && python3 tools/stress_test.py
 ```
 
 `git push` 之後 GitHub Pages 會自動重新建置（一兩分鐘），網址不變。
 
 ---
 
-## 六、檔案結構
+## 七、檔案結構
 
 ```
 index.html                批改網頁（GitHub Pages 入口）
@@ -211,6 +252,7 @@ solutions/q1..q6.py       參考解答（只用課內語法）
 tools/generate_tests.py   產生測資
 tools/verify_tests.py     測資驗證（五道防線，含 mutation testing）
 tools/test_detect.py      學號 / 題號辨識的回歸測試（含 app.js 交叉比對）
+tools/test_config.py      測資與配分設定的算法測試（含 app.js 交叉比對）
 tools/stress_test.py      抗壓測試（21 支惡夢程式 + 污染測試）
 tools/grade_cli.py        命令列批改（判定與網頁版一致）
 tools/ref_alt/q1..q6.py   第二份獨立實作（對拍用）
