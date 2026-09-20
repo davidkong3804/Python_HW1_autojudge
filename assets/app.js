@@ -180,7 +180,55 @@
   /* ------------------------------------------------------------------ */
   /* 路徑 -> (學號, 題號)                                                 */
   /* ------------------------------------------------------------------ */
-  var ID_RE = /[A-Za-z]\d{7,10}|\d{8,10}/;
+  /* --8<-- detect:start（tools/test_detect.py 會把這段抓出來，用 node 跟 Python 版對拍） */
+
+  /* 學號有兩種長相：
+   *   含字母 —— B11901234、B15A01308（中間夾字母的也算）
+   *   純數字 —— 8~10 碼
+   * 舊的寫法 /[A-Za-z]\d{7,10}|\d{8,10}/ 只認得「一個字母 + 一串數字」，
+   * 碰到 B15A01308 時「B」後面只跟得到 2 個數字就斷掉，整段比對失敗，
+   * 於是退而抓到 COOL 塞在路徑裡的使用者編號（例如 10213134），把學號判成別人的。
+   * 改成先把路徑切成 token 再分級判定：公告格式的「學號_HW1」資料夾最優先，
+   * 其次是含字母的學號，純數字排最後。 */
+  function idTokens(segment) {
+    return segment.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  }
+
+  function isIdWithLetter(tok) {
+    if (!/^[A-Za-z][A-Za-z0-9]*$/.test(tok)) return false;
+    if (tok.length < 6 || tok.length > 12) return false;
+    if (/^hw\d+$/i.test(tok)) return false;              // HW20241231 這種資料夾名不是學號
+    return tok.replace(/\D/g, '').length >= 4;
+  }
+
+  function isIdDigits(tok) {
+    return /^\d{8,10}$/.test(tok);
+  }
+
+  /* 第一級：公告格式的「學號_HW1」，取 HW 前面最後一個 token */
+  function idFromHwFolder(segment) {
+    var m = segment.match(/^(.*?)[_\-\s]*HW\s*\d+$/i);
+    if (!m || !m[1]) return '';
+    var toks = idTokens(m[1]);
+    if (!toks.length) return '';
+    var last = toks[toks.length - 1];
+    return (isIdWithLetter(last) || isIdDigits(last)) ? last.toUpperCase() : '';
+  }
+
+  /* 第二級：含字母的學號；第三級：純數字 */
+  function idFromTokens(segment, wantLetters) {
+    var toks = idTokens(segment);
+    for (var i = 0; i < toks.length; i++) {
+      if (wantLetters ? isIdWithLetter(toks[i]) : isIdDigits(toks[i])) return toks[i].toUpperCase();
+    }
+    return '';
+  }
+
+  var ID_FINDERS = [
+    idFromHwFolder,
+    function (s) { return idFromTokens(s, true); },
+    function (s) { return idFromTokens(s, false); }
+  ];
 
   function detectQid(name) {
     var m = name.match(/(?:^|[^a-z0-9])q\s*([1-6])(?![0-9])/i);
@@ -200,16 +248,24 @@
   function detectStudent(path) {
     var parts = path.split('/').filter(Boolean);
     var base = (parts.pop() || '').replace(/\.[^.]*$/, '');
-    for (var i = parts.length - 1; i >= 0; i--) {          // 由內往外找學號
-      var hit = parts[i].replace(/\.zip$/i, '').match(ID_RE);
-      if (hit) return hit[0].toUpperCase();
+    var segs = [];
+    for (var i = parts.length - 1; i >= 0; i--) {        // 由內往外找
+      segs.push(parts[i].replace(/\.zip$/i, ''));
     }
-    for (i = parts.length - 1; i >= 0; i--) {              // 沒學號就用資料夾名（去掉 _HW1）
-      var seg = parts[i].replace(/\.zip$/i, '').replace(/[_\-\s]*HW\s*\d+$/i, '').trim();
+    for (var f = 0; f < ID_FINDERS.length; f++) {        // 先把所有層都用高優先級的規則掃過一輪
+      for (i = 0; i < segs.length; i++) {
+        var hit = ID_FINDERS[f](segs[i]);
+        if (hit) return hit;
+      }
+    }
+    for (i = 0; i < segs.length; i++) {                  // 沒學號就用資料夾名（去掉 _HW1）
+      var seg = segs[i].replace(/[_\-\s]*HW\s*\d+$/i, '').trim();
       if (seg && !/^(src|code|python|作業|homework|hw\s*\d*)$/i.test(seg)) return seg;
     }
-    var own = base.match(ID_RE);
-    if (own) return own[0].toUpperCase();
+    for (f = 0; f < ID_FINDERS.length; f++) {
+      var own = ID_FINDERS[f](base);
+      if (own) return own;
+    }
     // 再來才用「最內層資料夾名稱原樣」——絕對不能拿檔名(q1/q2...)當學號，
     // 否則同一個人的六個檔案會被拆成六位「學生」。
     if (parts.length) return parts[parts.length - 1];
@@ -217,6 +273,8 @@
       .replace(/第\s*[1-6]\s*題/, '').replace(/^[_\-.\s]+|[_\-.\s]+$/g, '');
     return cleaned || '未知';
   }
+
+  /* --8<-- detect:end */
 
   /* ------------------------------------------------------------------ */
   /* Colab / Jupyter 筆記本（保險用：公告是交 .py，但總有人交 .ipynb）      */

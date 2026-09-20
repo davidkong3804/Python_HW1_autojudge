@@ -25,7 +25,6 @@ import tempfile
 import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ID_RE = re.compile(r"[A-Za-z]\d{7,10}|\d{8,10}")
 QID_RE = re.compile(r"(?:^|[^a-z0-9])q\s*([1-6])(?![0-9])", re.I)
 
 
@@ -82,20 +81,81 @@ def detect_qid(name):
     return "q" + hits[-1] if hits else ""
 
 
+# 學號有兩種長相：
+#   含字母 —— B11901234、B15A01308（中間夾字母的也算）
+#   純數字 —— 8~10 碼
+# 舊的寫法 [A-Za-z]\d{7,10}|\d{8,10} 只認得「一個字母 + 一串數字」，碰到
+# B15A01308 時「B」後面只跟得到 2 個數字就斷掉，整段比對失敗，於是退而抓到
+# COOL 塞在路徑裡的使用者編號（例如 10213134），把學號判成別人的。
+# 改成先把路徑切成 token 再分級判定：公告格式的「學號_HW1」資料夾最優先，
+# 其次是含字母的學號，純數字排最後。
+# 這段規則與 assets/app.js 的同名函式必須一致，由 tools/test_detect.py 對拍把關。
+TOKEN_SEP_RE = re.compile(r"[^A-Za-z0-9]+")
+HW_SUFFIX_RE = re.compile(r"^(.*?)[_\-\s]*HW\s*\d+$", re.I)
+
+
+def id_tokens(segment):
+    return [t for t in TOKEN_SEP_RE.split(segment) if t]
+
+
+def is_id_with_letter(tok):
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", tok):
+        return False
+    if not 6 <= len(tok) <= 12:
+        return False
+    if re.fullmatch(r"hw\d+", tok, flags=re.I):      # HW20241231 這種資料夾名不是學號
+        return False
+    return sum(ch.isdigit() for ch in tok) >= 4
+
+
+def is_id_digits(tok):
+    return bool(re.fullmatch(r"\d{8,10}", tok))
+
+
+def id_from_hw_folder(segment):
+    """第一級：公告格式的「學號_HW1」，取 HW 前面最後一個 token。"""
+    m = HW_SUFFIX_RE.match(segment)
+    if not m or not m.group(1):
+        return ""
+    toks = id_tokens(m.group(1))
+    if not toks:
+        return ""
+    last = toks[-1]
+    return last.upper() if (is_id_with_letter(last) or is_id_digits(last)) else ""
+
+
+def id_from_tokens(segment, want_letters):
+    """第二級：含字母的學號；第三級：純數字。"""
+    for tok in id_tokens(segment):
+        if is_id_with_letter(tok) if want_letters else is_id_digits(tok):
+            return tok.upper()
+    return ""
+
+
+ID_FINDERS = [
+    id_from_hw_folder,
+    lambda s: id_from_tokens(s, True),
+    lambda s: id_from_tokens(s, False),
+]
+
+
 def detect_student(relpath):
     parts = [p for p in relpath.replace("\\", "/").split("/") if p]
     base = os.path.splitext(parts.pop())[0] if parts else ""
-    for seg in reversed(parts):
-        hit = ID_RE.search(re.sub(r"\.zip$", "", seg, flags=re.I))
-        if hit:
-            return hit.group(0).upper()
-    for seg in reversed(parts):
-        seg = re.sub(r"[_\-\s]*HW\s*\d+$", "", re.sub(r"\.zip$", "", seg, flags=re.I), flags=re.I).strip()
+    segs = [re.sub(r"\.zip$", "", seg, flags=re.I) for seg in reversed(parts)]
+    for finder in ID_FINDERS:            # 先把所有層都用高優先級的規則掃過一輪
+        for seg in segs:
+            hit = finder(seg)
+            if hit:
+                return hit
+    for seg in segs:                     # 沒學號就用資料夾名（去掉 _HW1）
+        seg = re.sub(r"[_\-\s]*HW\s*\d+$", "", seg, flags=re.I).strip()
         if seg and not re.fullmatch(r"(src|code|python|作業|homework|hw\s*\d*)", seg, flags=re.I):
             return seg
-    hit = ID_RE.search(base)
-    if hit:
-        return hit.group(0).upper()
+    for finder in ID_FINDERS:
+        own = finder(base)
+        if own:
+            return own
     # 絕對不能拿檔名(q1/q2...)當學號，否則一個人的六個檔會變成六位「學生」
     if parts:
         return parts[-1]

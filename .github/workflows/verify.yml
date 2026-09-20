@@ -18,5 +18,7 @@ jobs:
           git diff --exit-code -- data tests || (echo "::error::測資檔與 generate_tests.py 的輸出不一致，請重跑 generate_tests.py 後再 commit" && exit 1)
       - name: 驗證測資（含 mutation testing）
         run: python3 tools/verify_tests.py
+      - name: 學號 / 題號辨識（含 app.js 交叉比對）
+        run: python3 tools/test_detect.py
       - name: 抗壓測試（惡夢學生程式）
         run: python3 tools/stress_test.py

@@ -1,82 +1,46 @@
 {
  "title": "HW1 自動批改測資",
- "generated_with_seed": 20260914,
  "problems": [
   {
    "id": "q1",
    "name": "BMI Calculator",
    "points": 15,
-   "pointsPerTest": 1.5,
+   "pointsPerTest": 3.0,
    "tests": [
     {
      "n": 1,
-     "input": "1.75 68",
-     "expected": "22.20",
-     "note": "題目範例 1",
-     "kind": "example"
-    },
-    {
-     "n": 2,
-     "input": "1.60 55",
-     "expected": "21.48",
-     "note": "題目範例 2",
-     "kind": "example"
-    },
-    {
-     "n": 3,
      "input": "2 100",
      "expected": "25.00",
      "note": "整數輸入且 BMI 為整數 25 -> 必須補成 25.00",
      "kind": "special"
     },
     {
-     "n": 4,
+     "n": 2,
      "input": "0.5 3.2",
      "expected": "12.80",
-     "note": "極小值(嬰兒)：身高 < 1，BMI 12.80",
+     "note": "極小值（嬰兒）：身高 < 1，BMI 12.80",
      "kind": "special"
     },
     {
-     "n": 5,
+     "n": 3,
      "input": "1.7 49.5",
      "expected": "17.13",
      "note": "17.128... -> 17.13，無條件捨去會得 17.12",
      "kind": "special"
     },
     {
-     "n": 6,
+     "n": 4,
      "input": "3 500",
      "expected": "55.56",
      "note": "極大值：BMI 55.56，進位測試",
      "kind": "special"
     },
     {
-     "n": 7,
+     "n": 5,
      "input": "1.0 0.5",
      "expected": "0.50",
      "note": "體重小於 1，答案只有 0.50",
      "kind": "special"
-    },
-    {
-     "n": 8,
-     "input": "1.83 95.25",
-     "expected": "28.44",
-     "note": "身高體重皆為小數",
-     "kind": "special"
-    },
-    {
-     "n": 9,
-     "input": "1.66 125.9",
-     "expected": "45.69",
-     "note": "隨機測資",
-     "kind": "random"
-    },
-    {
-     "n": 10,
-     "input": "1.82 100.5",
-     "expected": "30.34",
-     "note": "隨機測資",
-     "kind": "random"
     }
    ]
   },
@@ -84,77 +48,42 @@
    "id": "q2",
    "name": "Simple Calculator",
    "points": 15,
-   "pointsPerTest": 1.5,
+   "pointsPerTest": 3.0,
    "tests": [
     {
      "n": 1,
-     "input": "+,5.5,3.2",
-     "expected": "8.70",
-     "note": "題目範例 1",
-     "kind": "example"
+     "input": "-,3,10",
+     "expected": "-7.00",
+     "note": "減法且結果為負數 -7.00",
+     "kind": "special"
     },
     {
      "n": 2,
-     "input": "/,9,4",
-     "expected": "2.25",
-     "note": "題目範例 2",
-     "kind": "example"
+     "input": "*,-2.5,4",
+     "expected": "-10.00",
+     "note": "乘法含負小數 -10.00",
+     "kind": "special"
     },
     {
      "n": 3,
-     "input": "-,3,10",
-     "expected": "-7.00",
-     "note": "結果為負數 -7.00",
-     "kind": "special"
-    },
-    {
-     "n": 4,
-     "input": "*,-2.5,4",
-     "expected": "-10.00",
-     "note": "負數乘法 -10.00",
-     "kind": "special"
-    },
-    {
-     "n": 5,
-     "input": "/,5,0",
-     "expected": "Error",
-     "note": "除數為 0 -> Error",
-     "kind": "special"
-    },
-    {
-     "n": 6,
      "input": "/,7.5,0.0",
      "expected": "Error",
      "note": "除數寫成 0.0 -> 仍然是 Error（用字串比對 '0' 會錯）",
      "kind": "special"
     },
     {
-     "n": 7,
-     "input": "/,0,8",
-     "expected": "0.00",
-     "note": "被除數為 0，不是 Error，應輸出 0.00",
-     "kind": "special"
-    },
-    {
-     "n": 8,
+     "n": 4,
      "input": "/,2,3",
      "expected": "0.67",
      "note": "0.6666... -> 0.67，無條件捨去會得 0.66",
      "kind": "special"
     },
     {
-     "n": 9,
+     "n": 5,
      "input": "+,-7.25,-3.75",
      "expected": "-11.00",
-     "note": "兩個負小數相加 -11.00",
+     "note": "加法，兩個負小數相加 -11.00",
      "kind": "special"
-    },
-    {
-     "n": 10,
-     "input": "+,29.35,-11.36",
-     "expected": "17.99",
-     "note": "隨機測資",
-     "kind": "random"
     }
    ]
   },
@@ -162,73 +91,38 @@
    "id": "q3",
    "name": "Prime Number and Even or Odd Checker",
    "points": 15,
-   "pointsPerTest": 1.5,
+   "pointsPerTest": 3.0,
    "tests": [
     {
      "n": 1,
-     "input": "17",
-     "expected": "Prime,Odd",
-     "note": "題目範例 1",
-     "kind": "example"
+     "input": "1",
+     "expected": "Not Prime,Odd",
+     "note": "1 不是質數（最常見的漏洞），輸出 Not Prime,Odd",
+     "kind": "special"
     },
     {
      "n": 2,
-     "input": "20",
-     "expected": "Not Prime,Even",
-     "note": "題目範例 2",
-     "kind": "example"
+     "input": "2",
+     "expected": "Prime,Even",
+     "note": "唯一的偶質數，輸出 Prime,Even",
+     "kind": "special"
     },
     {
      "n": 3,
-     "input": "1",
-     "expected": "Not Prime,Odd",
-     "note": "1 不是質數（最常見的漏洞）",
+     "input": "4",
+     "expected": "Not Prime,Even",
+     "note": "最小的合數，輸出 Not Prime,Even",
      "kind": "special"
     },
     {
      "n": 4,
-     "input": "2",
-     "expected": "Prime,Even",
-     "note": "唯一的偶質數",
-     "kind": "special"
-    },
-    {
-     "n": 5,
-     "input": "3",
-     "expected": "Prime,Odd",
-     "note": "最小的奇質數",
-     "kind": "special"
-    },
-    {
-     "n": 6,
-     "input": "4",
-     "expected": "Not Prime,Even",
-     "note": "最小的合數",
-     "kind": "special"
-    },
-    {
-     "n": 7,
      "input": "9",
      "expected": "Not Prime,Odd",
      "note": "奇數的完全平方，i*i<n 的迴圈會誤判為質數",
      "kind": "special"
     },
     {
-     "n": 8,
-     "input": "997",
-     "expected": "Prime,Odd",
-     "note": "三位數質數",
-     "kind": "special"
-    },
-    {
-     "n": 9,
-     "input": "998001",
-     "expected": "Not Prime,Odd",
-     "note": "999 的平方，大的奇合數",
-     "kind": "special"
-    },
-    {
-     "n": 10,
+     "n": 5,
      "input": "999983",
      "expected": "Prime,Odd",
      "note": "小於 10^6 的最大質數，測效能",
@@ -240,77 +134,42 @@
    "id": "q4",
    "name": "Sum of Digits and String Length",
    "points": 15,
-   "pointsPerTest": 1.5,
+   "pointsPerTest": 3.0,
    "tests": [
     {
      "n": 1,
-     "input": "45OpenAI67",
-     "expected": "22,10",
-     "note": "題目範例 1",
-     "kind": "example"
-    },
-    {
-     "n": 2,
-     "input": "Programming",
-     "expected": "0,11",
-     "note": "題目範例 2（沒有數字，和為 0）",
-     "kind": "example"
-    },
-    {
-     "n": 3,
      "input": "1234567890",
      "expected": "45,10",
      "note": "全部都是數字，和 45 長度 10",
      "kind": "special"
     },
     {
-     "n": 4,
+     "n": 2,
      "input": "a",
      "expected": "0,1",
-     "note": "單一字母",
+     "note": "單一字母，沒有數字所以和為 0",
      "kind": "special"
     },
     {
-     "n": 5,
-     "input": "7",
-     "expected": "7,1",
-     "note": "單一數字",
-     "kind": "special"
-    },
-    {
-     "n": 6,
+     "n": 3,
      "input": "007Bond",
      "expected": "7,7",
      "note": "開頭是 0，數字和 7",
      "kind": "special"
     },
     {
-     "n": 7,
+     "n": 4,
      "input": "0000",
      "expected": "0,4",
      "note": "全部都是 0，和仍為 0（不可與『沒有數字』混淆）",
      "kind": "special"
     },
     {
-     "n": 8,
+     "n": 5,
      "input": "ZZZ999zzz111",
      "expected": "30,12",
      "note": "大小寫混合 + 數字，和 30 長度 12",
      "kind": "special"
-    },
-    {
-     "n": 9,
-     "input": "Gw21qE5CcD3Y",
-     "expected": "11,12",
-     "note": "隨機測資（長度 12）",
-     "kind": "random"
-    },
-    {
-     "n": 10,
-     "input": "mG4upIz5l37N",
-     "expected": "19,12",
-     "note": "隨機測資（長度 12）",
-     "kind": "random"
     }
    ]
   },
@@ -318,77 +177,42 @@
    "id": "q5",
    "name": "Password Strength Checker",
    "points": 20,
-   "pointsPerTest": 2.0,
+   "pointsPerTest": 4.0,
    "tests": [
     {
      "n": 1,
-     "input": "ewf",
-     "expected": "Weak",
-     "note": "題目範例 1",
-     "kind": "example"
-    },
-    {
-     "n": 2,
-     "input": "3r23rf",
-     "expected": "Moderate",
-     "note": "題目範例 2（長度 6 邊界 -> Moderate）",
-     "kind": "example"
-    },
-    {
-     "n": 3,
-     "input": "kjfdsijhfioafhweowfw",
-     "expected": "Strong",
-     "note": "題目範例 3",
-     "kind": "example"
-    },
-    {
-     "n": 4,
      "input": "abcde",
      "expected": "Weak",
      "note": "長度 5 邊界 -> Weak",
      "kind": "special"
     },
     {
-     "n": 5,
+     "n": 2,
+     "input": "123456",
+     "expected": "Moderate",
+     "note": "長度 6 邊界 -> Moderate；全數字，用 int(input()) 會炸掉",
+     "kind": "special"
+    },
+    {
+     "n": 3,
      "input": "1234567890",
      "expected": "Moderate",
      "note": "長度 10 邊界 -> Moderate",
      "kind": "special"
     },
     {
-     "n": 6,
+     "n": 4,
      "input": "12345678901",
      "expected": "Strong",
      "note": "長度 11 邊界 -> Strong",
      "kind": "special"
     },
     {
-     "n": 7,
-     "input": "a",
-     "expected": "Weak",
-     "note": "長度 1",
-     "kind": "special"
-    },
-    {
-     "n": 8,
-     "input": "123456",
-     "expected": "Moderate",
-     "note": "全數字密碼，用 int(input()) 會炸掉",
-     "kind": "special"
-    },
-    {
-     "n": 9,
+     "n": 5,
      "input": "Pass word",
      "expected": "Moderate",
      "note": "含空格，長度 9；誤用 split() 會判成 Weak",
      "kind": "special"
-    },
-    {
-     "n": 10,
-     "input": "qKhWq97*mm!R5KSiH9^pebXi&bJ8JU&Ht&VseUFG31OP88HYqrp7Ro*Tdim33n%6",
-     "expected": "Strong",
-     "note": "隨機測資（長度 64，含符號）",
-     "kind": "random"
     }
    ]
   },
@@ -396,77 +220,42 @@
    "id": "q6",
    "name": "Find Roots",
    "points": 20,
-   "pointsPerTest": 2.0,
+   "pointsPerTest": 4.0,
    "tests": [
     {
      "n": 1,
-     "input": "2 16 1",
-     "expected": "-0.063 -7.937",
-     "note": "題目範例 1",
-     "kind": "example"
-    },
-    {
-     "n": 2,
-     "input": "16 200 23",
-     "expected": "-0.116 -12.384",
-     "note": "題目範例 2",
-     "kind": "example"
-    },
-    {
-     "n": 3,
-     "input": "2 4 2",
-     "expected": "-1.000 -1.000",
-     "note": "題目範例 3：重根 (b^2-4ac = 0)",
-     "kind": "example"
-    },
-    {
-     "n": 4,
-     "input": "1 -5 6",
-     "expected": "3.000 2.000",
-     "note": "整數雙根 3, 2",
-     "kind": "special"
-    },
-    {
-     "n": 5,
      "input": "-1 0 4",
      "expected": "2.000 -2.000",
      "note": "a 為負數：沒有排序會把 -2.000 印在前面",
      "kind": "special"
     },
     {
-     "n": 6,
+     "n": 2,
      "input": "-2 5 3",
      "expected": "3.000 -0.500",
      "note": "a 為負數且有小數根 3.000 / -0.500",
      "kind": "special"
     },
     {
-     "n": 7,
+     "n": 3,
      "input": "1 5 0",
      "expected": "0.000 -5.000",
      "note": "c = 0，其中一根剛好是 0.000",
      "kind": "special"
     },
     {
-     "n": 8,
+     "n": 4,
      "input": "1 0 -2",
      "expected": "1.414 -1.414",
      "note": "無理根 ±1.414",
      "kind": "special"
     },
     {
-     "n": 9,
-     "input": "0.5 -1.5 -14",
-     "expected": "7.000 -4.000",
-     "note": "係數含小數，根為 7.000 / -4.000",
+     "n": 5,
+     "input": "0.5 -3 4.5",
+     "expected": "3.000 3.000",
+     "note": "係數含小數且 b^2-4ac = 0 的重根 3.000 3.000",
      "kind": "special"
-    },
-    {
-     "n": 10,
-     "input": "1.8 -16.8 -10",
-     "expected": "9.895 -0.561",
-     "note": "隨機測資",
-     "kind": "random"
     }
    ]
   }

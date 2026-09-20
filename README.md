@@ -13,7 +13,7 @@
 
 ```
 配分：Q1~Q4 各 15 分、Q5~Q6 各 20 分，共 100 分
-測資：每題 10 組 → Q1~Q4 每組 1.5 分、Q5~Q6 每組 2 分
+測資：每題 5 組 → Q1~Q4 每組 3 分、Q5~Q6 每組 4 分（同作業公告）
 繳交格式：學號_HW1.zip  →  學號_HW1/q1.py ~ q6.py
 ```
 
@@ -137,9 +137,10 @@ python3 tools/grade_cli.py *.zip -o 成績.csv --detail 明細.json
 
 ## 五、測資怎麼出、怎麼驗的（要接手維護再看）
 
-`tools/generate_tests.py`：手工特例 + 隨機測資，預期輸出一律**實際執行參考解答**產生，不手寫答案。
-隨機測資會先過歧義過濾器：四捨五入邊界（`x.xx5`）附近的值、會印出 `-0.00` 的值一律丟掉；
-Q6 另外限制係數範圍，避免公式抵消誤差。
+`tools/generate_tests.py`：每題 5 組手工挑選的特殊測資，預期輸出一律**實際執行參考解答**產生，不手寫答案。
+測資不採用作業 PDF 上的範例（學生手上已經有，沒有鑑別度），也不放隨機測資——
+只有 5 組額度，每一組都要換到一個明確的鑑別點。
+挑選的門檻是 `tools/verify_tests.py` 的第四道防線：每題 4 支漏洞程式都必須至少被一組測資抓到。
 
 每題刻意放的坑（完整表格見 [`tests/README.md`](tests/README.md)）：
 
@@ -154,6 +155,7 @@ Q6 另外限制係數範圍，避免公式抵消誤差。
 
 ```bash
 python3 tools/verify_tests.py    # 測資正確性（五道防線）
+python3 tools/test_detect.py     # 學號 / 題號辨識
 python3 tools/stress_test.py     # 批改程式扛不扛得住奇怪的學生程式
 ```
 
@@ -163,7 +165,13 @@ python3 tools/stress_test.py     # 批改程式扛不扛得住奇怪的學生程
 
 `stress_test.py` 灌 21 支惡夢程式：無窮迴圈、無窮 `print`、吃記憶體、無窮遞迴、空檔案、語法錯誤、
 BOM / Big5 / UTF-16，以及**竄改 `builtins` 或 `math` 的程式**（每跑完一筆就還原全域狀態，
-不會讓某位同學污染排在他後面的所有人）。兩支都接在 `.github/workflows/verify.yml`，每次 push 自動跑。
+不會讓某位同學污染排在他後面的所有人）。
+
+`test_detect.py` 固定一批路徑，檢查學號與題號都判對。判錯學號比判錯分數更糟——成績會掛到
+別人頭上，而且同一個人的六個檔可能被拆成六位「學生」。它同時會用 node 把 `assets/app.js`
+的辨識段落抓出來跑一遍，確認網頁版與 CLI 版對同一條路徑給出相同答案。
+
+三支都接在 `.github/workflows/verify.yml`，每次 push 自動跑。
 
 **還是請三到四位助教各自寫一次作業、跑過測資**：自動驗證擋得住實作 bug，
 擋不住「題目本身有兩種合理解讀」。
@@ -181,7 +189,8 @@ BOM / Big5 / UTF-16，以及**竄改 `builtins` 或 `math` 的程式**（每跑�
 改完務必依序跑：
 
 ```bash
-python3 tools/generate_tests.py && python3 tools/verify_tests.py && python3 tools/stress_test.py
+python3 tools/generate_tests.py && python3 tools/verify_tests.py \
+  && python3 tools/test_detect.py && python3 tools/stress_test.py
 ```
 
 `git push` 之後 GitHub Pages 會自動重新建置（一兩分鐘），網址不變。
@@ -201,6 +210,7 @@ data/mutants.js           故意寫錯的程式（網頁「載入示範」用的
 solutions/q1..q6.py       參考解答（只用課內語法）
 tools/generate_tests.py   產生測資
 tools/verify_tests.py     測資驗證（五道防線，含 mutation testing）
+tools/test_detect.py      學號 / 題號辨識的回歸測試（含 app.js 交叉比對）
 tools/stress_test.py      抗壓測試（21 支惡夢程式 + 污染測試）
 tools/grade_cli.py        命令列批改（判定與網頁版一致）
 tools/ref_alt/q1..q6.py   第二份獨立實作（對拍用）
