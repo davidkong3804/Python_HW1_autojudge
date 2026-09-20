@@ -13,7 +13,7 @@
   var MUTANTS = window.HW_MUTANTS || {};
   var PROBLEMS = DATA.problems;
   var QIDS = PROBLEMS.map(function (p) { return p.id; });
-  var TOTAL_POINTS = PROBLEMS.reduce(function (s, p) { return s + p.points; }, 0);
+  var DEFAULT_TOTAL = PROBLEMS.reduce(function (s, p) { return s + p.points; }, 0);
 
   var $ = function (id) { return document.getElementById(id); };
   function el(tag, cls, text) {
@@ -570,6 +570,172 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* 測資與配分設定                                                        */
+  /*                                                                     */
+  /* 助教可以關掉某些測資、加自己的測資、改每題配分。設定存在瀏覽器裡，       */
+  /* 也可以匯出成 JSON 交給 tools/grade_cli.py --config，讓網頁版與命令列   */
+  /* 用完全相同的一套設定批改（兩邊設定不同會算出不同的成績）。             */
+  /*                                                                     */
+  /* 配分模型：題目總分固定，啟用中的測資平分。關掉一組不會讓總分變少，      */
+  /* 而是讓剩下的每一組變重。                                              */
+  /* ------------------------------------------------------------------ */
+  /* --8<-- config:start（tools/test_config.py 會把這段抓出來跟 grade_cli.py 對拍） */
+  var CFG_KEY = 'hw1.judge.config.v1';
+  var CFG_VERSION = 1;
+
+  function emptyConfig() {
+    return { version: CFG_VERSION, points: {}, disabled: {}, custom: {} };
+  }
+
+  /* 匯入的東西可能是別人手改過的，一律當成不可信的資料驗過再用 */
+  function sanitizeConfig(raw) {
+    var out = emptyConfig();
+    if (!raw || typeof raw !== 'object') return out;
+    QIDS.forEach(function (q) {
+      var base = problemOf(q);
+      var pt = raw.points && raw.points[q];
+      if (typeof pt === 'number' && isFinite(pt) && pt >= 0 && pt <= 1000) {
+        out.points[q] = Math.round(pt * 100) / 100;
+      }
+      var off = raw.disabled && raw.disabled[q];
+      if (Object.prototype.toString.call(off) === '[object Array]') {
+        out.disabled[q] = off.filter(function (n) {
+          return base.tests.some(function (t) { return t.n === n; });
+        });
+      }
+      var cus = raw.custom && raw.custom[q];
+      if (Object.prototype.toString.call(cus) === '[object Array]') {
+        out.custom[q] = cus.filter(function (c) {
+          return c && typeof c.input === 'string' && typeof c.expected === 'string';
+        }).map(function (c) {
+          return {
+            input: String(c.input),
+            expected: String(c.expected),
+            note: String(c.note || '助教自訂測資'),
+            enabled: c.enabled !== false
+          };
+        });
+      }
+    });
+    return out;
+  }
+
+  function loadConfig() {
+    try {
+      var raw = localStorage.getItem(CFG_KEY);
+      return raw ? sanitizeConfig(JSON.parse(raw)) : emptyConfig();
+    } catch (e) {
+      return emptyConfig();          // 無痕視窗 / 擋住 site data 都可能讀不到
+    }
+  }
+
+  function saveConfig() {
+    try { localStorage.setItem(CFG_KEY, JSON.stringify(CFG)); } catch (e) { /* 存不了就算了 */ }
+  }
+
+  var CFG = loadConfig();
+
+  function pointsOf(qid) {
+    var v = CFG.points[qid];
+    return typeof v === 'number' ? v : problemOf(qid).points;
+  }
+
+  function builtinOn(qid, n) {
+    var off = CFG.disabled[qid];
+    return !off || off.indexOf(n) < 0;
+  }
+
+  function customOf(qid) { return CFG.custom[qid] || []; }
+
+  /* 目前這一輪實際要用的題目資料：只含啟用中的測資，每組分數重新攤分。 */
+  function activeProblems() {
+    return PROBLEMS.map(function (p) {
+      var tests = [];
+      p.tests.forEach(function (t) {
+        if (builtinOn(p.id, t.n)) tests.push(t);
+      });
+      customOf(p.id).forEach(function (c, i) {
+        if (c.enabled === false) return;
+        tests.push({
+          n: 'C' + (i + 1), input: c.input, expected: c.expected,
+          note: c.note, kind: 'custom'
+        });
+      });
+      var points = pointsOf(p.id);
+      return {
+        id: p.id, name: p.name, points: points, tests: tests,
+        pointsPerTest: tests.length ? points / tests.length : 0
+      };
+    });
+  }
+
+  function activeProblemOf(qid) {
+    return activeProblems().filter(function (p) { return p.id === qid; })[0];
+  }
+
+  function totalPoints() {
+    return QIDS.reduce(function (n, q) { return n + pointsOf(q); }, 0);
+  }
+
+  function round2(n) { return Math.round(n * 100) / 100; }
+
+  /* 設定是否動過原廠值——報表上要講清楚這次是用什麼設定批改的 */
+  function configDiff() {
+    var d = { points: [], disabled: [], custom: [], empty: [] };
+    activeProblems().forEach(function (p) {
+      var base = problemOf(p.id);
+      if (p.points !== base.points) {
+        d.points.push(p.id.toUpperCase() + ' ' + base.points + '→' + p.points + ' 分');
+      }
+      var off = (CFG.disabled[p.id] || []).slice().sort(function (a, b) { return a - b; });
+      if (off.length) {
+        d.disabled.push(p.id.toUpperCase() + ' 關閉 #' + off.join(' #'));
+      }
+      var cus = customOf(p.id).filter(function (c) { return c.enabled !== false; });
+      if (cus.length) d.custom.push(p.id.toUpperCase() + ' 自訂 ' + cus.length + ' 組');
+      if (!p.tests.length) d.empty.push(p.id.toUpperCase());
+    });
+    d.changed = !!(d.points.length || d.disabled.length || d.custom.length);
+    return d;
+  }
+
+  function configSummaryLines() {
+    var d = configDiff();
+    var lines = [];
+    var used = 0, base = 0;
+    activeProblems().forEach(function (p) { used += p.tests.length; });
+    PROBLEMS.forEach(function (p) { base += p.tests.length; });
+    lines.push('本次使用 ' + used + ' 組測資（原廠 ' + base + ' 組），總分 ' + round2(totalPoints()) + ' 分');
+    if (d.points.length) lines.push('配分已調整：' + d.points.join('、'));
+    if (d.disabled.length) lines.push('已關閉的測資：' + d.disabled.join('、'));
+    if (d.custom.length) lines.push('助教自訂測資：' + d.custom.join('、'));
+    if (d.empty.length) lines.push('警告：' + d.empty.join('、') + ' 沒有任何啟用中的測資，這一題永遠是 0 分');
+    return lines;
+  }
+
+  function kindLabel(kind) {
+    if (kind === 'example') return '題目範例';
+    if (kind === 'special') return '特殊測資';
+    if (kind === 'custom') return '自訂測資';
+    return '隨機測資';
+  }
+  /* --8<-- config:end */
+
+  /* 用參考解答算出某筆輸入的正確輸出——助教不需要自己手打答案。
+     這和 tools/generate_tests.py 的做法一致：答案一律由實際執行參考解答產生。 */
+  function solveWithReference(qid, input) {
+    var code = SOLUTIONS[qid];
+    if (!code) return Promise.reject(new Error('找不到 ' + qid.toUpperCase() + ' 的參考解答'));
+    return Engine.run(code, input + '\n', 15000).then(function (r) {
+      if (r.status === 'timeout') throw new Error('參考解答執行逾時，這筆輸入可能不合法');
+      if (r.status !== 'ok') {
+        throw new Error('參考解答跑這筆輸入會出錯，請檢查格式：\n' + (r.stderr || '').slice(0, 300));
+      }
+      return String(r.stdout).replace(/\n+$/, '');
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
   /* 批改                                                                 */
   /* ------------------------------------------------------------------ */
   var results = null;
@@ -600,10 +766,22 @@
     $('progressBox').hidden = !on && !results;
   }
 
+  var lastRunInfo = null;
+
   function gradeList(list, label) {
     var cfg = settings();
     ensureEngine().catch(function () {});
-    var totalRuns = list.length * PROBLEMS[0].tests.length;
+    // 整輪固定用同一份設定快照：批到一半有人改設定，不該讓前後幾位同學用不同的尺
+    var ACTIVE = activeProblems();
+    var activeOf = function (qid) {
+      return ACTIVE.filter(function (p) { return p.id === qid; })[0];
+    };
+    lastRunInfo = configSummaryLines();
+    var totalRuns = 0;
+    list.forEach(function (s) {
+      var p = s.qid && activeOf(s.qid);
+      if (p) totalRuns += p.tests.length;
+    });
     var done = 0;
     $('progressBox').hidden = false;
     busy(true);
@@ -613,7 +791,8 @@
 
     list.forEach(function (sub) {
       if (!sub.qid) return;
-      var prob = problemOf(sub.qid);
+      var prob = activeOf(sub.qid);
+      if (!prob) return;
       chain = chain.then(function () {
         var rec = {
           score: 0, max: prob.points, cases: [], passed: 0, reok: 0, viaAlt: 0,
@@ -659,7 +838,7 @@
               if (status === 'tle') tleCount++;
 
               if (!passed && cfg.stopOnFirst) stopped = '前面已經錯了，依設定略過剩下的測資';
-              // 無窮迴圈的人不要讓他把 10 次逾時都跑完（每次逾時都要重開直譯器）
+              // 無窮迴圈的人不要讓他把每一筆逾時都跑完（每次逾時都要重開直譯器）
               if (tleCount >= 2 && !stopped) stopped = '連續逾時兩次，直接判定其餘測資也會逾時';
 
               rec.cases.push({
@@ -668,7 +847,7 @@
                 note: t.note, kind: t.kind, ms: r.ms, viaAlt: !!r.viaAlt
               });
               done++;
-              $('bar').style.width = Math.round(done / totalRuns * 100) + '%';
+              $('bar').style.width = (totalRuns ? Math.round(done / totalRuns * 100) : 100) + '%';
               $('progressText').textContent = label + '：' + done + ' / ' + totalRuns +
                 '（' + sub.student + ' ' + sub.qid.toUpperCase() + '）';
             });
@@ -700,7 +879,9 @@
     if (!targets.length) { alert('沒有未指定題號的檔案。'); return; }
     ensureEngine().catch(function () {});
     var cfg = settings();
-    var total = targets.length * PROBLEMS.length * 2, done = 0;
+    var ACTIVE = activeProblems().filter(function (p) { return p.tests.length; });
+    if (!ACTIVE.length) { alert('目前沒有任何啟用中的測資，無法自動配對。'); return; }
+    var total = targets.length * ACTIVE.length * 2, done = 0;
     $('progressBox').hidden = false;
     busy(true);
 
@@ -709,7 +890,7 @@
       chain = chain.then(function () {
         var best = { qid: '', hit: 0 };
         var inner = Promise.resolve();
-        PROBLEMS.forEach(function (p) {
+        ACTIVE.forEach(function (p) {
           inner = inner.then(function () {
             var hit = 0;
             var two = Promise.resolve();
@@ -718,7 +899,7 @@
                 return Engine.run(sub.code, t.input + '\n', cfg.timeout).then(function (r) {
                   if (r.status === 'ok' && normalize(r.stdout, cfg.mode) === normalize(t.expected, cfg.mode)) hit++;
                   done++;
-                  $('bar').style.width = Math.round(done / total * 100) + '%';
+                  $('bar').style.width = (total ? Math.round(done / total * 100) : 100) + '%';
                   $('progressText').textContent = '自動配對：' + done + ' / ' + total;
                 });
               });
@@ -742,12 +923,14 @@
   /* ------------------------------------------------------------------ */
   function renderScores(out) {
     results = out;
+    var ACTIVE = activeProblems();
+    var FULL = round2(totalPoints());
     $('resultCard').hidden = false;
     var head = $('scoreHead');
     head.innerHTML = '';
     head.appendChild(el('th', '', '學生'));
-    PROBLEMS.forEach(function (p) { head.appendChild(el('th', '', p.id.toUpperCase() + '（' + p.points + '）')); });
-    head.appendChild(el('th', '', '總分（' + TOTAL_POINTS + '）'));
+    ACTIVE.forEach(function (p) { head.appendChild(el('th', '', p.id.toUpperCase() + '（' + p.points + '）')); });
+    head.appendChild(el('th', '', '總分（' + FULL + '）'));
 
     var tbody = $('scoreTable').querySelector('tbody');
     tbody.innerHTML = '';
@@ -758,7 +941,7 @@
       var tr = el('tr');
       tr.appendChild(el('td', '', name));
       var total = 0;
-      PROBLEMS.forEach(function (p) {
+      ACTIVE.forEach(function (p) {
         var rec = out[name][p.id];
         var td = el('td', 'score');
         if (!rec) {
@@ -775,16 +958,16 @@
         }
         tr.appendChild(td);
       });
-      total = Math.round(total * 100) / 100;
+      total = round2(total);
       sum += total;
-      if (total === TOTAL_POINTS) full++;
+      if (total === FULL) full++;
       tr.appendChild(el('td', 'total', String(total)));
       tbody.appendChild(tr);
     });
 
     var reokTotal = 0, altTotal = 0;
     students.forEach(function (name) {
-      PROBLEMS.forEach(function (p) {
+      ACTIVE.forEach(function (p) {
         var rec = out[name][p.id];
         if (rec) { reokTotal += rec.reok || 0; altTotal += rec.viaAlt || 0; }
       });
@@ -804,6 +987,14 @@
     }
     noteBox.hidden = msgs.length === 0;
     noteBox.textContent = msgs.join(' ') + (msgs.length ? '（選項在上面，改完要重新批改）' : '');
+
+    var info = $('runConfigInfo');
+    var lines = lastRunInfo || configSummaryLines();
+    info.innerHTML = '';
+    lines.forEach(function (line, i) {
+      info.appendChild(el('div', i === 0 ? '' : 'small', line));
+    });
+    info.className = 'runinfo' + (configDiff().changed ? ' changed' : '');
     $('resultCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -825,8 +1016,7 @@
       var head = el('div', 'head');
       head.appendChild(el('span', 'tag ' + (c.status === 'skip' ? '' : c.status), STATUS_TEXT[c.status]));
       head.appendChild(el('strong', '', '#' + c.n));
-      head.appendChild(el('span', 'kind ' + c.kind,
-        c.kind === 'example' ? '題目範例' : (c.kind === 'special' ? '特殊測資' : '隨機測資')));
+      head.appendChild(el('span', 'kind ' + c.kind, kindLabel(c.kind)));
       head.appendChild(el('span', 'muted small', c.why ? c.note + '（' + c.why + '）' : c.note));
       wrap.appendChild(head);
 
@@ -869,23 +1059,28 @@
   }
 
   function toCsv() {
+    var ACTIVE = activeProblems();
     var rows = [];
     var head = ['學號'];
-    PROBLEMS.forEach(function (p) { head.push(p.id.toUpperCase() + '(' + p.points + ')'); });
+    ACTIVE.forEach(function (p) { head.push(p.id.toUpperCase() + '(' + p.points + ')'); });
     head.push('總分');
-    PROBLEMS.forEach(function (p) { head.push(p.id.toUpperCase() + '通過筆數'); });
+    ACTIVE.forEach(function (p) { head.push(p.id.toUpperCase() + '通過筆數'); });
     rows.push(head);
     Object.keys(results).sort().forEach(function (name) {
       var row = [name], total = 0, pass = [];
-      PROBLEMS.forEach(function (p) {
+      ACTIVE.forEach(function (p) {
         var rec = results[name][p.id];
         row.push(rec ? rec.score : '');
         pass.push(rec ? rec.passed + '/' + rec.cases.length : '未繳交');
         if (rec) total += rec.score;
       });
-      row.push(Math.round(total * 100) / 100);
+      row.push(round2(total));
       rows.push(row.concat(pass));
     });
+    // 成績單一定要帶著「這是用什麼設定算出來的」，否則兩份 CSV 看起來一樣卻不同義
+    rows.push([]);
+    rows.push(['批改設定']);
+    (lastRunInfo || configSummaryLines()).forEach(function (line) { rows.push([line]); });
     return rows.map(function (r) {
       return r.map(function (v) {
         v = String(v);
@@ -898,13 +1093,17 @@
   /* ------------------------------------------------------------------ */
   /* 測資 / 參考解答檢視                                                   */
   /* ------------------------------------------------------------------ */
+  var viewerShowing = null;
+
   function renderTests(qid) {
-    var prob = problemOf(qid);
+    viewerShowing = { type: 'tests', qid: qid };
+    var prob = activeProblemOf(qid);
     var box = $('viewer');
     box.hidden = false;
     box.innerHTML = '';
     box.appendChild(el('h3', '', prob.id.toUpperCase() + ' ' + prob.name +
-      '：' + prob.tests.length + ' 組測資，每組 ' + prob.pointsPerTest + ' 分'));
+      '：' + prob.tests.length + ' 組啟用中的測資，' + prob.points + ' 分，每組 ' +
+      round2(prob.pointsPerTest) + ' 分'));
     var tbl = el('table');
     var thead = el('thead'), htr = el('tr');
     ['#', '類型', '輸入', '正確輸出', '說明'].forEach(function (h) { htr.appendChild(el('th', '', h)); });
@@ -915,8 +1114,7 @@
       var tr = el('tr');
       tr.appendChild(el('td', '', String(t.n)));
       var k = el('td');
-      k.appendChild(el('span', 'kind ' + t.kind,
-        t.kind === 'example' ? '題目範例' : (t.kind === 'special' ? '特殊測資' : '隨機測資')));
+      k.appendChild(el('span', 'kind ' + t.kind, kindLabel(t.kind)));
       tr.appendChild(k);
       var i = el('td'); i.appendChild(el('code', '', t.input)); tr.appendChild(i);
       var o = el('td'); o.appendChild(el('code', '', t.expected)); tr.appendChild(o);
@@ -930,6 +1128,7 @@
   }
 
   function renderSolution(qid) {
+    viewerShowing = { type: 'sol', qid: qid };
     var box = $('viewer');
     box.hidden = false;
     box.innerHTML = '';
@@ -939,9 +1138,9 @@
 
   function testsAsText() {
     var out = [];
-    PROBLEMS.forEach(function (p) {
+    activeProblems().forEach(function (p) {
       out.push('=== ' + p.id.toUpperCase() + ' ' + p.name +
-        '（' + p.points + ' 分，每組 ' + p.pointsPerTest + ' 分）===');
+        '（' + p.points + ' 分，每組 ' + round2(p.pointsPerTest) + ' 分）===');
       p.tests.forEach(function (t) {
         out.push('--- #' + t.n + ' [' + t.kind + '] ' + t.note);
         out.push('input : ' + t.input);
@@ -950,6 +1149,251 @@
       out.push('');
     });
     return out.join('\n');
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 測資與配分設定面板                                                     */
+  /* ------------------------------------------------------------------ */
+  var cfgDraft = {};            // qid -> 正在編輯、還沒加進去的自訂測資
+
+  function draftOf(qid) {
+    if (!cfgDraft[qid]) cfgDraft[qid] = { input: '', note: '', expected: null };
+    return cfgDraft[qid];
+  }
+
+  function cfgChanged() {
+    saveConfig();
+    refreshCfgUI();
+  }
+
+  function renderCfgTotals() {
+    var box = $('cfgTotals');
+    box.innerHTML = '';
+    var total = round2(totalPoints());
+    var d = configDiff();
+    var used = 0, base = 0;
+    activeProblems().forEach(function (p) { used += p.tests.length; });
+    PROBLEMS.forEach(function (p) { base += p.tests.length; });
+
+    var main = el('div', 'totals-main');
+    main.appendChild(el('span', 'totals-num', String(total)));
+    main.appendChild(el('span', 'totals-lbl', '分 · 目前啟用 ' + used + ' 組測資（原廠 ' + base + ' 組）'));
+    box.appendChild(main);
+
+    var msgs = [];
+    if (total !== DEFAULT_TOTAL) {
+      msgs.push('總分是 ' + total + ' 分，不是原本的 ' + DEFAULT_TOTAL + ' 分。確定要這樣給分嗎？');
+    }
+    if (d.empty.length) {
+      msgs.push(d.empty.join('、') + ' 沒有任何啟用中的測資，這一題所有人都會是 0 分。');
+    }
+    if (msgs.length) {
+      box.className = 'totals bad';
+      msgs.forEach(function (m) { box.appendChild(el('div', 'totals-warn', '⚠ ' + m)); });
+    } else {
+      box.className = 'totals' + (d.changed ? ' changed' : '');
+      if (d.changed) box.appendChild(el('div', 'totals-note', '設定已經動過原廠值，批改報表上會一併註記。'));
+    }
+  }
+
+  function renderCfgTable() {
+    var tb = $('cfgTable').querySelector('tbody');
+    tb.innerHTML = '';
+    activeProblems().forEach(function (p) {
+      var base = problemOf(p.id);
+      var tr = el('tr');
+      tr.appendChild(el('td', '', p.id.toUpperCase() + ' ' + p.name));
+
+      var tdPts = el('td');
+      var inp = el('input');
+      inp.type = 'number'; inp.min = '0'; inp.max = '1000'; inp.step = '1';
+      inp.value = String(p.points);
+      inp.className = 'ptsinput';
+      inp.onchange = function () {
+        var v = parseFloat(inp.value);
+        if (!isFinite(v) || v < 0) { inp.value = String(p.points); return; }
+        v = round2(v);
+        if (v === base.points) delete CFG.points[p.id];
+        else CFG.points[p.id] = v;
+        cfgChanged();
+      };
+      tdPts.appendChild(inp);
+      if (p.points !== base.points) tdPts.appendChild(el('span', 'muted small', ' 原 ' + base.points));
+      tr.appendChild(tdPts);
+
+      var nCustom = customOf(p.id).filter(function (c) { return c.enabled !== false; }).length;
+      var nBuiltin = p.tests.length - nCustom;
+      var tdN = el('td', p.tests.length ? '' : 'zero');
+      tdN.appendChild(el('span', '', p.tests.length + ' 組'));
+      var parts = ['內建 ' + nBuiltin + '/' + base.tests.length];
+      if (nCustom) parts.push('自訂 ' + nCustom);
+      tdN.appendChild(el('span', 'muted small', '（' + parts.join('，') + '）'));
+      tr.appendChild(tdN);
+
+      tr.appendChild(el('td', '', p.tests.length ? String(round2(p.pointsPerTest)) : '—'));
+
+      var tdBtn = el('td');
+      var b = el('button', 'btn ghost small', '編輯');
+      b.onclick = function () { $('cfgQ').value = p.id; renderCfgEditor(p.id); };
+      tdBtn.appendChild(b);
+      tr.appendChild(tdBtn);
+      tb.appendChild(tr);
+    });
+  }
+
+  function testRow(label, kind, input, expected, note, on, onToggle, onDelete) {
+    var row = el('div', 'cfgrow' + (on ? '' : ' off'));
+    var cb = el('input');
+    cb.type = 'checkbox';
+    cb.checked = on;
+    cb.onchange = function () { onToggle(cb.checked); };
+    row.appendChild(cb);
+
+    var mid = el('div', 'cfgrow-mid');
+    var head = el('div', 'cfgrow-head');
+    head.appendChild(el('strong', '', '#' + label));
+    head.appendChild(el('span', 'kind ' + kind, kindLabel(kind)));
+    head.appendChild(el('span', 'muted small', note));
+    mid.appendChild(head);
+    var io_ = el('div', 'cfgrow-io');
+    var i = el('div');
+    i.appendChild(el('span', 'lbl', '輸入'));
+    i.appendChild(el('code', '', input));
+    var o = el('div');
+    o.appendChild(el('span', 'lbl', '正確輸出'));
+    o.appendChild(el('code', '', expected));
+    io_.appendChild(i); io_.appendChild(o);
+    mid.appendChild(io_);
+    row.appendChild(mid);
+
+    if (onDelete) {
+      var del = el('button', 'btn danger ghost small', '刪除');
+      del.onclick = onDelete;
+      row.appendChild(del);
+    }
+    return row;
+  }
+
+  function renderCfgEditor(qid) {
+    var box = $('cfgEditor');
+    box.innerHTML = '';
+    var base = problemOf(qid);
+    var draft = draftOf(qid);
+
+    box.appendChild(el('h3', '', base.id.toUpperCase() + ' ' + base.name));
+
+    box.appendChild(el('p', 'muted small', '內建測資（取消勾選就不列入這次批改）'));
+    base.tests.forEach(function (t) {
+      box.appendChild(testRow(t.n, t.kind, t.input, t.expected, t.note, builtinOn(qid, t.n),
+        function (on) {
+          var off = CFG.disabled[qid] || [];
+          if (on) off = off.filter(function (x) { return x !== t.n; });
+          else if (off.indexOf(t.n) < 0) off = off.concat([t.n]);
+          if (off.length) CFG.disabled[qid] = off; else delete CFG.disabled[qid];
+          cfgChanged();
+        }));
+    });
+
+    var cus = customOf(qid);
+    if (cus.length) {
+      box.appendChild(el('p', 'muted small', '助教自訂測資'));
+      cus.forEach(function (c, idx) {
+        box.appendChild(testRow('C' + (idx + 1), 'custom', c.input, c.expected, c.note,
+          c.enabled !== false,
+          function (on) { c.enabled = on; cfgChanged(); },
+          function () {
+            if (!confirm('刪除這組自訂測資？')) return;
+            CFG.custom[qid] = cus.filter(function (_x, i) { return i !== idx; });
+            if (!CFG.custom[qid].length) delete CFG.custom[qid];
+            cfgChanged();
+          }));
+      });
+    }
+
+    /* ---- 新增自訂測資 ---- */
+    var add = el('div', 'cfgadd');
+    add.appendChild(el('h4', '', '新增自訂測資'));
+    add.appendChild(el('p', 'muted small',
+      '只要輸入 input，正確輸出由參考解答實際跑出來，不用自己打答案。多行輸入請一行一行打。'));
+
+    var ta = el('textarea');
+    ta.rows = 2;
+    ta.placeholder = '輸入（例如 1.75 68）';
+    ta.value = draft.input;
+    ta.oninput = function () { draft.input = ta.value; draft.expected = null; renderPreview(); };
+    add.appendChild(ta);
+
+    var noteIn = el('input');
+    noteIn.type = 'text';
+    noteIn.placeholder = '說明：這組在測什麼（選填）';
+    noteIn.value = draft.note;
+    noteIn.oninput = function () { draft.note = noteIn.value; };
+    add.appendChild(noteIn);
+
+    var btnRow = el('div', 'row gap wrap-row');
+    var calcBtn = el('button', 'btn', '用參考解答算出正確輸出');
+    var addBtn = el('button', 'btn primary', '加入這組測資');
+    addBtn.disabled = true;
+    btnRow.appendChild(calcBtn);
+    btnRow.appendChild(addBtn);
+    add.appendChild(btnRow);
+
+    var preview = el('div', 'cfgpreview');
+    add.appendChild(preview);
+
+    function renderPreview() {
+      preview.innerHTML = '';
+      addBtn.disabled = draft.expected === null;
+      if (draft.expected === null) return;
+      preview.appendChild(el('span', 'lbl', '參考解答算出的正確輸出'));
+      preview.appendChild(el('pre', '', draft.expected));
+    }
+
+    calcBtn.onclick = function () {
+      var input = ta.value.replace(/\s+$/, '');
+      if (!input) { alert('請先填輸入。'); return; }
+      calcBtn.disabled = true;
+      calcBtn.textContent = '執行參考解答中…';
+      ensureEngine().catch(function () {});
+      solveWithReference(qid, input).then(function (expected) {
+        draft.input = input;
+        draft.expected = expected;
+        renderPreview();
+      }).catch(function (e) {
+        draft.expected = null;
+        renderPreview();
+        alert('算不出正確輸出：\n' + (e && e.message ? e.message : e));
+      }).then(function () {
+        calcBtn.disabled = false;
+        calcBtn.textContent = '用參考解答算出正確輸出';
+      });
+    };
+
+    addBtn.onclick = function () {
+      if (draft.expected === null) return;
+      var list = CFG.custom[qid] || [];
+      list.push({
+        input: draft.input,
+        expected: draft.expected,
+        note: draft.note || '助教自訂測資',
+        enabled: true
+      });
+      CFG.custom[qid] = list;
+      cfgDraft[qid] = { input: '', note: '', expected: null };
+      cfgChanged();
+    };
+
+    box.appendChild(add);
+    renderPreview();
+  }
+
+  function refreshCfgUI() {
+    renderCfgTotals();
+    renderCfgTable();
+    renderCfgEditor($('cfgQ').value);
+    if (viewerShowing && viewerShowing.type === 'tests' && !$('viewer').hidden) {
+      renderTests(viewerShowing.qid);       // 檢視中的測資表要跟著設定一起變
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -1028,19 +1472,67 @@
         Object.keys(out).forEach(function (s) {
           QIDS.forEach(function (q) { if (out[s][q]) total += out[s][q].score; });
         });
-        alert(total === TOTAL_POINTS
-          ? '參考解答拿到 ' + total + ' / ' + TOTAL_POINTS + ' 分，測資與批改程式一致。'
-          : '注意：參考解答只拿到 ' + total + ' / ' + TOTAL_POINTS + ' 分，請檢查測資或執行環境。');
+        var full = round2(totalPoints());
+        total = round2(total);
+        alert(total === full
+          ? '參考解答拿到 ' + total + ' / ' + full + ' 分，測資與批改程式一致。'
+          : '注意：參考解答只拿到 ' + total + ' / ' + full + ' 分，請檢查測資或執行環境。');
       });
     };
 
     $('exportCsv').onclick = function () { if (results) download('hw1_成績.csv', toCsv(), 'text/csv'); };
     $('exportJson').onclick = function () {
-      if (results) download('hw1_批改明細.json', JSON.stringify(results, null, 1), 'application/json');
+      if (!results) return;
+      var payload = {
+        summary: lastRunInfo || configSummaryLines(),
+        config: CFG,
+        problems: activeProblems().map(function (p) {
+          return { id: p.id, points: p.points, tests: p.tests.length,
+                   pointsPerTest: round2(p.pointsPerTest) };
+        }),
+        results: results
+      };
+      download('hw1_批改明細.json', JSON.stringify(payload, null, 1), 'application/json');
     };
     $('viewTests').onclick = function () { renderTests($('viewQ').value); };
     $('viewSol').onclick = function () { renderSolution($('viewQ').value); };
     $('downloadTests').onclick = function () { download('hw1_測資.txt', testsAsText()); };
+
+    /* ---- 測資與配分設定 ---- */
+    PROBLEMS.forEach(function (p) {
+      var o = el('option', '', p.id.toUpperCase() + ' ' + p.name);
+      o.value = p.id;
+      $('cfgQ').appendChild(o);
+    });
+    $('cfgQ').onchange = function () { renderCfgEditor($('cfgQ').value); };
+
+    $('cfgExport').onclick = function () {
+      download('hw1_批改設定.json', JSON.stringify(CFG, null, 1), 'application/json');
+    };
+    $('cfgImport').onclick = function () { $('cfgFile').click(); };
+    $('cfgFile').onchange = function (e) {
+      var f = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!f) return;
+      readFileText(f).then(function (text) {
+        var parsed;
+        try { parsed = JSON.parse(text); }
+        catch (err) { alert('這不是合法的 JSON 檔。'); return; }
+        CFG = sanitizeConfig(parsed);
+        cfgDraft = {};
+        cfgChanged();
+        alert('設定已匯入。' + configSummaryLines().join('\n'));
+      });
+    };
+    $('cfgReset').onclick = function () {
+      if (!configDiff().changed) { alert('目前就是原廠設定。'); return; }
+      if (!confirm('把配分與測資全部恢復成原廠設定？自訂測資會一併刪除。')) return;
+      CFG = emptyConfig();
+      cfgDraft = {};
+      cfgChanged();
+    };
+
+    refreshCfgUI();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

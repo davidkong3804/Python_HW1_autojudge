@@ -95,6 +95,7 @@
       <button class="btn" id="exportJson">匯出 JSON（含每筆細節）</button>
       <span id="summaryStat" class="pill"></span>
     </div>
+    <div id="runConfigInfo" class="runinfo"></div>
     <p id="gradeNote" class="warn small" hidden></p>
     <div class="tablewrap">
       <table id="scoreTable">
@@ -102,7 +103,7 @@
         <tbody></tbody>
       </table>
     </div>
-    <p class="muted small">點任何一格可以看那一題 10 筆測資的逐筆結果與差異。</p>
+    <p class="muted small">點任何一格可以看那一題每一筆測資的結果與差異。</p>
     <div id="detail" class="detail" hidden></div>
   </section>
 
@@ -117,12 +118,57 @@
     </div>
     <div id="viewer" class="viewer" hidden></div>
   </section>
+
+  <!-- 測資與配分設定 -->
+  <section class="card" id="cfgCard">
+    <h2>測資與配分設定 <span class="pill">進階</span></h2>
+    <p class="muted small" style="margin-top:-4px">
+      可以關掉某些測資、加自己的測資、改每題配分。<strong>題目總分固定，啟用中的測資平分</strong>——
+      關掉一組不會讓總分變少，而是讓剩下的每一組變重。設定存在這台瀏覽器裡，換電腦或換助教請用下面的匯出／匯入。
+    </p>
+
+    <div id="cfgTotals" class="totals"></div>
+
+    <div class="tablewrap">
+      <table id="cfgTable">
+        <thead><tr>
+          <th>題目</th><th>配分</th><th>啟用測資</th><th>每組分數</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="row gap wrap-row" style="margin-top:14px">
+      <label class="opt">編輯題目
+        <select id="cfgQ"></select>
+      </label>
+      <button class="btn ghost" id="cfgExport">匯出設定 JSON</button>
+      <button class="btn ghost" id="cfgImport">匯入設定 JSON</button>
+      <button class="btn danger ghost" id="cfgReset">全部恢復原廠</button>
+      <input type="file" id="cfgFile" accept=".json,application/json" hidden>
+    </div>
+
+    <div id="cfgEditor" class="cfgeditor"></div>
+
+    <details class="hint">
+      <summary>自訂測資的正確輸出是怎麼來的？</summary>
+      <ul>
+        <li>助教只要輸入 input，正確輸出由這個頁面<strong>實際執行 <code>solutions/qN.py</code> 參考解答</strong>產生，
+            和 <code>tools/generate_tests.py</code> 的做法一致——答案不是手打的，不會打錯。</li>
+        <li>參考解答跑這筆輸入會出錯（例如格式不合題目規定），就不會讓你加進去，並且會把錯誤訊息顯示出來。</li>
+        <li>多行輸入請一行一行打；送出前會照題目的格式跑一次給你看結果。</li>
+        <li>匯出的 JSON 可以交給命令列版：<code>python3 tools/grade_cli.py 繳交資料夾/ --config 設定.json</code>，
+            讓兩邊用同一套設定，不會算出不同的成績。</li>
+      </ul>
+    </details>
+  </section>
 </main>
 
 <footer class="wrap muted small">
   助教工具 · 學生程式在你自己的瀏覽器裡執行，不會上傳到任何伺服器。<br>
   測資由 <code>tools/generate_tests.py</code> 產生、<code>tools/verify_tests.py</code> 驗證（含 mutation testing）、
-  <code>tools/stress_test.py</code> 抗壓測試。使用說明與維護方式見
+  <code>tools/stress_test.py</code> 抗壓測試；學號辨識與配分算法另有 <code>tools/test_detect.py</code>、
+  <code>tools/test_config.py</code> 與網頁版對拍。使用說明與維護方式見
   <a href="https://github.com/davidkong3804/Python_HW1_autojudge#readme">GitHub 上的 README</a>。
 </footer>
 

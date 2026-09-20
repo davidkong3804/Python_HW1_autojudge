@@ -52,6 +52,70 @@ def load_manifest():
         return json.load(fh)
 
 
+def apply_config(manifest, path):
+    """套用網頁版「測資與配分設定」匯出的 JSON，讓兩邊用同一把尺。
+
+    設定格式（assets/app.js 的 CFG）：
+        {"version":1,
+         "points":   {"q1": 15},            # 每題總分
+         "disabled": {"q1": [2, 5]},        # 關掉的內建測資編號
+         "custom":   {"q1": [{"input":..., "expected":..., "note":..., "enabled":true}]}}
+
+    也吃「批改明細 JSON」——它把設定包在 config 欄位裡。
+
+    配分模型和網頁版一致：題目總分固定，啟用中的測資平分。
+    """
+    with open(path, encoding="utf-8") as fh:
+        cfg = json.load(fh)
+    if isinstance(cfg, dict) and isinstance(cfg.get("config"), dict):
+        cfg = cfg["config"]
+    if not isinstance(cfg, dict):
+        raise SystemExit("設定檔格式不對：最外層應該是一個物件")
+
+    points = cfg.get("points") or {}
+    disabled = cfg.get("disabled") or {}
+    custom = cfg.get("custom") or {}
+    notes = []
+
+    for prob in manifest["problems"]:
+        qid = prob["id"]
+        base_points, base_n = prob["points"], len(prob["tests"])
+
+        pt = points.get(qid)
+        if isinstance(pt, (int, float)) and 0 <= pt <= 1000:
+            prob["points"] = round(float(pt), 2)
+            if prob["points"] != base_points:
+                notes.append("%s 配分 %g→%g 分" % (qid.upper(), base_points, prob["points"]))
+
+        have = set(t["n"] for t in prob["tests"])
+        off = sorted(n for n in (disabled.get(qid) or [])
+                     if isinstance(n, int) and not isinstance(n, bool) and n in have)
+        if off:
+            prob["tests"] = [t for t in prob["tests"] if t["n"] not in off]
+            notes.append("%s 關閉 #%s" % (qid.upper(), " #".join(str(n) for n in off)))
+
+        added = 0
+        for i, c in enumerate(custom.get(qid) or []):
+            if not isinstance(c, dict) or c.get("enabled") is False:
+                continue
+            if not isinstance(c.get("input"), str) or not isinstance(c.get("expected"), str):
+                continue
+            prob["tests"].append({
+                "n": "C%d" % (i + 1), "input": c["input"], "expected": c["expected"],
+                "note": str(c.get("note") or "助教自訂測資"), "kind": "custom",
+            })
+            added += 1
+        if added:
+            notes.append("%s 自訂 %d 組" % (qid.upper(), added))
+
+        n = len(prob["tests"])
+        prob["pointsPerTest"] = (prob["points"] / float(n)) if n else 0.0
+        if not n:
+            notes.append("警告：%s 沒有任何啟用中的測資，這一題永遠是 0 分" % qid.upper())
+        del base_n
+    return notes
+
+
 def normalize(text, mode="strict"):
     lines = [l.rstrip(" \t") for l in str(text).replace("\r\n", "\n").replace("\r", "\n").split("\n")]
     while lines and lines[-1] == "":
@@ -300,6 +364,8 @@ def main():
     ap.add_argument("--timeout", type=float, default=8)
     ap.add_argument("--mode", choices=["strict", "trim", "loose"], default="strict")
     ap.add_argument("--detail", default="", help="另外輸出逐筆明細 JSON")
+    ap.add_argument("--config", default="",
+                    help="套用網頁版「測資與配分設定」匯出的 JSON（關掉的測資、自訂測資、配分）")
     ap.add_argument("--strict-output", action="store_true",
                     help="嚴格模式：程式印完正確答案後才出錯（例如結尾多一個 input()）也算錯")
     ap.add_argument("--lenient-input", action="store_true",
@@ -308,9 +374,19 @@ def main():
     args = ap.parse_args()
 
     manifest = load_manifest()
+    cfg_notes = apply_config(manifest, args.config) if args.config else []
     problems = {p["id"]: p for p in manifest["problems"]}
     qids = [p["id"] for p in manifest["problems"]]
     total_points = sum(p["points"] for p in manifest["problems"])
+    used_tests = sum(len(p["tests"]) for p in manifest["problems"])
+
+    # 成績單一定要帶著「這是用什麼設定算出來的」，否則兩份看起來一樣卻不同義
+    summary_lines = ["本次使用 %d 組測資，總分 %g 分" % (used_tests, round(total_points, 2))]
+    summary_lines += cfg_notes
+    if args.config:
+        print("套用設定：%s" % args.config)
+    for line in summary_lines:
+        print("  " + line)
 
     workdir = tempfile.mkdtemp(prefix="hw1grade_")
     try:
@@ -392,7 +468,7 @@ def main():
                 row.append("%d/%d" % (rec["passed"], len(rec["cases"])) if rec else "未繳交")
             rows.append(row)
 
-        head = ["學號"] + ["%s(%d)" % (q.upper(), problems[q]["points"]) for q in qids] + \
+        head = ["學號"] + ["%s(%g)" % (q.upper(), problems[q]["points"]) for q in qids] + \
                ["總分"] + ["%s通過筆數" % q.upper() for q in qids]
         def safe(v):                       # 避免 Excel 把 =、+ 開頭當公式
             v = "" if v is None else str(v)
@@ -402,6 +478,10 @@ def main():
             w = csv.writer(fh)
             w.writerow(head)
             w.writerows([[safe(c) for c in r] for r in rows])
+            w.writerow([])
+            w.writerow(["批改設定"])
+            for line in summary_lines:
+                w.writerow([safe(line)])
         reok_total = sum(rec.get("reok", 0) for qs in scores.values() for rec in qs.values())
         alt_total = sum(rec.get("viaAlt", 0) for qs in scores.values() for rec in qs.values())
         if reok_total:
@@ -410,11 +490,18 @@ def main():
         if alt_total:
             print("注意：有 %d 筆是同學把一行輸入拆成好幾個 input() 讀，已改用逐行輸入重跑並以答案為準。"
                   % alt_total)
-        print("\n共 %d 位學生，滿分 %d。成績已寫入 %s" % (len(scores), total_points, args.out))
+        print("\n共 %d 位學生，滿分 %g。成績已寫入 %s" % (len(scores), round(total_points, 2), args.out))
 
         if args.detail:
+            payload = {
+                "summary": summary_lines,
+                "problems": [{"id": p["id"], "points": p["points"], "tests": len(p["tests"]),
+                              "pointsPerTest": round(p["pointsPerTest"], 4)}
+                             for p in manifest["problems"]],
+                "results": detail,
+            }
             with open(args.detail, "w", encoding="utf-8") as fh:
-                json.dump(detail, fh, ensure_ascii=False, indent=1)
+                json.dump(payload, fh, ensure_ascii=False, indent=1)
             print("逐筆明細：%s" % args.detail)
         return 0
     finally:
