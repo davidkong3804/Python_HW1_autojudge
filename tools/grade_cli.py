@@ -140,7 +140,10 @@ def detect_qid(name):
     m = re.search(r"第\s*([1-6])\s*題", name)
     if m:
         return "q" + m.group(1)
-    stripped = re.sub(r"[A-Za-z]?\d{6,12}", "_", name)
+    # 先把學號和「HW1」這種作業編號拿掉再找數字：不然路徑裡的 _HW1 會讓
+    # 任何認不出題號的檔案都被判成 Q1，默默掛到第一題去
+    stripped = re.sub(r"HW\s*\d+", "_", name, flags=re.I)
+    stripped = re.sub(r"[A-Za-z]?\d{6,12}", "_", stripped)
     hits = re.findall(r"(?:^|[^0-9])([1-6])(?![0-9])", stripped)
     return "q" + hits[-1] if hits else ""
 
