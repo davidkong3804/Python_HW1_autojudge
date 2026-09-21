@@ -235,7 +235,9 @@
     if (m) return 'q' + m[1];
     m = name.match(/第\s*([1-6])\s*題/);
     if (m) return 'q' + m[1];
-    var stripped = name.replace(/[A-Za-z]?\d{6,12}/g, '_');      // 先把學號拿掉再找數字
+    // 先把學號和「HW1」這種作業編號拿掉再找數字：不然路徑裡的 _HW1 會讓
+    // 任何認不出題號的檔案都被判成 Q1，默默掛到第一題去
+    var stripped = name.replace(/HW\s*\d+/ig, '_').replace(/[A-Za-z]?\d{6,12}/g, '_');
     var all = stripped.match(/(?:^|[^0-9])([1-6])(?![0-9])/g);
     if (all && all.length) {
       var last = all[all.length - 1].match(/([1-6])/);
@@ -275,6 +277,39 @@
   }
 
   /* --8<-- detect:end */
+
+  /* COOL 下載的資料夾會把姓名夾在中間：
+       b15107040#_梁宸華 (Liang, Chen-Hua)_352729_10220667_B15107040_HW1
+     抓出「梁宸華 (Liang, Chen-Hua)」用來顯示。純顯示用，不影響批改。 */
+  function detectName(path) {
+    var parts = path.split('/').filter(Boolean);
+    for (var i = 0; i < parts.length; i++) {
+      var m = parts[i].replace(/\.zip$/i, '').match(/#_(.+)$/);
+      if (!m) continue;
+      var rest = m[1]
+        .replace(/(?:_\d+)*(?:_[A-Za-z0-9]+)?[_\-\s]*HW\s*\d+$/i, '')   // _流水號_編號_學號_HW1
+        .replace(/(?:_\d+)+$/, '')
+        .replace(/^[_\-\s]+|[_\-\s]+$/g, '');
+      if (rest) return rest;
+    }
+    return '';
+  }
+
+  /* 「梁宸華 (Liang, Chen-Hua)」-> 顯示「梁宸華」，完整的放 title */
+  function shortName(name) {
+    var m = name.match(/^(.+?)\s*[（(].+[）)]\s*$/);
+    return m ? m[1].trim() : name;
+  }
+
+  /* 繳交的作業編號：公告格式是「學號_HW1」，抓出 HW1 */
+  function detectHw(path) {
+    var parts = path.split('/').filter(Boolean);
+    for (var i = parts.length - 1; i >= 0; i--) {
+      var m = parts[i].replace(/\.zip$/i, '').match(/(HW\s*\d+)$/i);
+      if (m) return m[1].toUpperCase().replace(/\s+/g, '');
+    }
+    return '';
+  }
 
   /* ------------------------------------------------------------------ */
   /* Colab / Jupyter 筆記本（保險用：公告是交 .py，但總有人交 .ipynb）      */
@@ -478,70 +513,203 @@
   /* ------------------------------------------------------------------ */
   /* 對應表                                                               */
   /* ------------------------------------------------------------------ */
+  var expanded = {};          // 學號 -> 是否展開
+  var seenGroup = {};         // 出現過的學號（用來決定要不要自動展開）
+  var onlyProblem = false;
+
+  function groupSubmissions() {
+    var order = [], byStudent = {};
+    submissions.forEach(function (sub) {
+      var k = sub.student || '未知';
+      if (!byStudent[k]) {
+        byStudent[k] = { student: k, name: '', hw: '', files: [] };
+        order.push(k);
+      }
+      var g = byStudent[k];
+      g.files.push(sub);
+      if (!g.name) g.name = detectName(sub.path);
+      if (!g.hw) g.hw = detectHw(sub.path);
+    });
+    order.sort();
+    return order.map(function (k) {
+      var g = byStudent[k];
+      var got = {}, dup = false, unknown = 0;
+      g.files.forEach(function (sub) {
+        if (!sub.qid) { unknown++; return; }
+        if (got[sub.qid]) dup = true;
+        got[sub.qid] = true;
+      });
+      g.got = got;
+      g.dup = dup;
+      g.unknown = unknown;
+      g.missing = QIDS.filter(function (q) { return !got[q]; });
+      g.needsWork = unknown > 0 || dup || g.missing.length > 0 || k === '未知';
+      return g;
+    });
+  }
+
+  /* 檔名只顯示看得懂的那一截：COOL 塞在前面的流水號對助教沒有意義。
+     同一位學生底下有同名檔案時，才補上它的上層資料夾以資區別。 */
+  function fileLabel(sub, group) {
+    var parts = sub.path.replace(/\s*▸.*$/, '').split('/').filter(Boolean);
+    var base = parts[parts.length - 1] || sub.path;
+    var same = group.files.filter(function (o) {
+      var op = o.path.split('/').filter(Boolean);
+      return (op[op.length - 1] || '') === base;
+    });
+    if (same.length > 1 && parts.length > 1) {
+      return parts[parts.length - 2] + '/' + base;
+    }
+    return base;
+  }
+
+  function statusPill(g) {
+    if (g.unknown) {
+      return { cls: 'bad', text: g.unknown + ' 題待指定' };
+    }
+    if (g.missing.length === QIDS.length) {
+      return { cls: 'bad', text: '沒有可批改的題目' };
+    }
+    if (g.missing.length) {
+      return { cls: 'warn', text: '缺 ' + g.missing.map(function (q) { return q.toUpperCase(); }).join('、') };
+    }
+    if (g.dup) return { cls: 'warn', text: '有重複，取最高分' };
+    return { cls: 'ok', text: '六題齊全' };
+  }
+
   function renderFiles() {
-    var tbody = $('filesTable').querySelector('tbody');
-    tbody.innerHTML = '';
+    var list = $('subsList');
+    list.innerHTML = '';
     $('filesCard').hidden = submissions.length === 0;
-    $('fileCount').textContent = submissions.length + ' 個程式';
     $('runAll').disabled = submissions.length === 0;
 
-    var seen = {}, dup = false, unknown = 0, students = {};
-    submissions.forEach(function (s) {
-      var tr = el('tr');
-      tr.appendChild(el('td', 'small', s.path));
+    var groups = groupSubmissions();
+    var shown = groups.filter(function (g) { return !onlyProblem || g.needsWork; });
+    var nWork = groups.filter(function (g) { return g.needsWork; }).length;
 
-      var tdS = el('td');
-      var inp = el('input');
-      inp.value = s.student; inp.size = 16;
-      inp.onchange = function () { s.student = inp.value.trim(); renderFiles(); };
-      tdS.appendChild(inp);
-      tr.appendChild(tdS);
+    $('fileCount').textContent = groups.length + ' 位學生 · ' + submissions.length + ' 個程式';
+    $('subsStat').textContent = nWork
+      ? nWork + ' 位需要處理'
+      : (groups.length ? '全部都對好了' : '');
 
-      var tdQ = el('td');
-      var sel = el('select');
-      var opt0 = el('option', '', '未指定'); opt0.value = '';
-      sel.appendChild(opt0);
-      PROBLEMS.forEach(function (p) {
-        var o = el('option', '', p.id.toUpperCase() + ' ' + p.name);
-        o.value = p.id;
-        sel.appendChild(o);
-      });
-      sel.value = s.qid || '';
-      sel.onchange = function () { s.qid = sel.value; renderFiles(); };
-      tdQ.appendChild(sel);
-      tr.appendChild(tdQ);
+    if (!shown.length && groups.length) {
+      list.appendChild(el('p', 'muted small', '沒有需要處理的學生，取消勾選就能看到全部。'));
+    }
 
-      tr.appendChild(el('td', 'muted small', String(s.code.split('\n').length)));
-
-      var tdX = el('td');
-      var b = el('button', 'btn ghost danger', '移除');
-      b.onclick = function () {
-        submissions = submissions.filter(function (x) { return x.key !== s.key; });
-        renderFiles();
-      };
-      tdX.appendChild(b);
-      tr.appendChild(tdX);
-      tbody.appendChild(tr);
-
-      students[s.student] = true;
-      if (!s.qid) unknown++;
-      var k = s.student + '|' + s.qid;
-      if (s.qid) { if (seen[k]) dup = true; seen[k] = true; }
-    });
-
-    var nStu = Object.keys(students).length;
-    var msgs = ['共 ' + nStu + ' 位學生。'];
-    submissions.length && Object.keys(students).forEach(function (st) {
-      var got = submissions.filter(function (s) { return s.student === st && s.qid; })
-        .map(function (s) { return s.qid; });
-      var missing = QIDS.filter(function (q) { return got.indexOf(q) < 0; });
-      if (missing.length && missing.length < QIDS.length) {
-        msgs.push(st + ' 缺 ' + missing.map(function (q) { return q.toUpperCase(); }).join('、') + '。');
+    shown.forEach(function (g) {
+      // 第一次看到這位學生、而且有題號還沒指定，就先幫他打開——那才是需要動手的
+      if (!seenGroup[g.student]) {
+        seenGroup[g.student] = true;
+        if (g.unknown) expanded[g.student] = true;
       }
+      var open = !!expanded[g.student];
+      var box = el('div', 'sub' + (open ? ' open' : '') + (g.needsWork ? ' work' : ''));
+
+      /* ---- 摺疊列 ---- */
+      var head = el('div', 'sub-head');
+      head.setAttribute('role', 'button');
+      head.setAttribute('tabindex', '0');
+      head.setAttribute('aria-expanded', open ? 'true' : 'false');
+
+      head.appendChild(el('span', 'sub-caret', '▸'));
+      var idn = el('div', 'sub-id');
+      idn.appendChild(el('strong', '', g.student));
+      if (g.name) {
+        var nm = el('span', 'sub-name', shortName(g.name));
+        nm.title = g.name;
+        idn.appendChild(nm);
+      }
+      head.appendChild(idn);
+
+      if (g.hw) head.appendChild(el('span', 'tagline', g.hw));
+      head.appendChild(el('span', 'sub-count', g.files.length + ' 個檔案'));
+
+      var pill = statusPill(g);
+      head.appendChild(el('span', 'state ' + pill.cls, pill.text));
+
+      function toggle() {
+        expanded[g.student] = !expanded[g.student];
+        renderFiles();
+      }
+      head.onclick = toggle;
+      head.onkeydown = function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+      };
+      box.appendChild(head);
+
+      /* ---- 展開後的內容 ---- */
+      if (open) {
+        var body = el('div', 'sub-body');
+
+        var tools = el('div', 'sub-tools');
+        var lbl = el('label', 'opt', '這份作業的學號 ');
+        var inp = el('input');
+        inp.type = 'text';
+        inp.value = g.student;
+        inp.size = 14;
+        inp.onchange = function () {
+          var v = inp.value.trim();
+          if (!v || v === g.student) { inp.value = g.student; return; }
+          g.files.forEach(function (sub) { sub.student = v; });
+          expanded[v] = true;
+          delete expanded[g.student];
+          renderFiles();
+        };
+        lbl.appendChild(inp);
+        tools.appendChild(lbl);
+        tools.appendChild(el('span', 'muted small', '改這裡會套用到下面全部檔案'));
+        body.appendChild(tools);
+
+        g.files.slice().sort(function (a, b) {
+          return (a.qid || 'zz').localeCompare(b.qid || 'zz');
+        }).forEach(function (sub) {
+          var row = el('div', 'sub-file' + (sub.qid ? '' : ' unset'));
+
+          var fn = el('code', 'sub-fname', fileLabel(sub, g));
+          fn.title = sub.path;
+          row.appendChild(fn);
+
+          var sel = el('select');
+          var opt0 = el('option', '', '未指定（不會批改）');
+          opt0.value = '';
+          sel.appendChild(opt0);
+          PROBLEMS.forEach(function (pr) {
+            var o = el('option', '', pr.id.toUpperCase() + ' ' + pr.name);
+            o.value = pr.id;
+            sel.appendChild(o);
+          });
+          sel.value = sub.qid || '';
+          sel.onchange = function () { sub.qid = sel.value; renderFiles(); };
+          row.appendChild(sel);
+
+          row.appendChild(el('span', 'muted small sub-lines',
+            sub.code.split('\n').length + ' 行'));
+
+          var del = el('button', 'btn ghost danger small', '移除');
+          del.onclick = function () {
+            submissions = submissions.filter(function (x) { return x.key !== sub.key; });
+            renderFiles();
+          };
+          row.appendChild(del);
+          body.appendChild(row);
+        });
+
+        box.appendChild(body);
+      }
+
+      list.appendChild(box);
     });
-    if (unknown) msgs.push('有 ' + unknown + ' 個檔案沒辨識出題號，請手動指定或按「自動配對」，未指定者不會批改。');
-    if (dup) msgs.push('同一位學生的同一題有多份，全部都會跑，成績取最高並標 ⚠。');
+
+    /* ---- 整批的提醒 ---- */
+    var msgs = [];
+    var totalUnknown = groups.reduce(function (n, g) { return n + g.unknown; }, 0);
+    var anyDup = groups.some(function (g) { return g.dup; });
+    if (totalUnknown) {
+      msgs.push('有 ' + totalUnknown + ' 個檔案沒辨識出題號，請展開指定或按「自動配對」，未指定的不會批改。');
+    }
+    if (anyDup) msgs.push('同一位學生的同一題有多份，全部都會跑，成績取最高並標 ⚠。');
     $('fileWarn').textContent = msgs.join(' ');
+    $('fileWarn').hidden = !msgs.length;
   }
 
   /* ------------------------------------------------------------------ */
@@ -1196,19 +1364,35 @@
     }
   }
 
-  function renderCfgTable() {
-    var tb = $('cfgTable').querySelector('tbody');
-    tb.innerHTML = '';
+  var cfgExpanded = {};       // 題號 -> 是否展開
+
+  function renderCfgList() {
+    var box = $('cfgList');
+    box.innerHTML = '';
     activeProblems().forEach(function (p) {
       var base = problemOf(p.id);
-      var tr = el('tr');
-      tr.appendChild(el('td', '', p.id.toUpperCase() + ' ' + p.name));
+      var open = !!cfgExpanded[p.id];
+      var changed = p.points !== base.points
+        || p.tests.length !== base.tests.length
+        || customOf(p.id).length > 0;
+      var wrap = el('div', 'sub' + (open ? ' open' : '') + (changed ? ' work' : ''));
 
-      var tdPts = el('td');
+      var head = el('div', 'sub-head cfgrow-head-grid');
+      head.setAttribute('role', 'button');
+      head.setAttribute('tabindex', '0');
+      head.setAttribute('aria-expanded', open ? 'true' : 'false');
+
+      head.appendChild(el('span', 'sub-caret', '▸'));
+      head.appendChild(el('span', 'cfg-name', p.id.toUpperCase() + ' ' + p.name));
+
+      /* 配分直接在這一列改，不用展開 */
+      var ptsCell = el('span', 'cfg-pts');
       var inp = el('input');
       inp.type = 'number'; inp.min = '0'; inp.max = '1000'; inp.step = '1';
       inp.value = String(p.points);
       inp.className = 'ptsinput';
+      inp.onclick = function (e) { e.stopPropagation(); };     // 點輸入框不要摺疊這一列
+      inp.onkeydown = function (e) { e.stopPropagation(); };
       inp.onchange = function () {
         var v = parseFloat(inp.value);
         if (!isFinite(v) || v < 0) { inp.value = String(p.points); return; }
@@ -1217,27 +1401,35 @@
         else CFG.points[p.id] = v;
         cfgChanged();
       };
-      tdPts.appendChild(inp);
-      if (p.points !== base.points) tdPts.appendChild(el('span', 'muted small', ' 原 ' + base.points));
-      tr.appendChild(tdPts);
+      ptsCell.appendChild(inp);
+      ptsCell.appendChild(el('span', 'muted small',
+        p.points !== base.points ? ' 分（原 ' + base.points + '）' : ' 分'));
+      head.appendChild(ptsCell);
 
       var nCustom = customOf(p.id).filter(function (c) { return c.enabled !== false; }).length;
       var nBuiltin = p.tests.length - nCustom;
-      var tdN = el('td', p.tests.length ? '' : 'zero');
-      tdN.appendChild(el('span', '', p.tests.length + ' 組'));
+      var nCell = el('span', 'cfg-n' + (p.tests.length ? '' : ' zero'));
+      nCell.appendChild(el('span', '', p.tests.length + ' 組'));
       var parts = ['內建 ' + nBuiltin + '/' + base.tests.length];
       if (nCustom) parts.push('自訂 ' + nCustom);
-      tdN.appendChild(el('span', 'muted small', '（' + parts.join('，') + '）'));
-      tr.appendChild(tdN);
+      nCell.appendChild(el('span', 'muted small', '（' + parts.join('，') + '）'));
+      head.appendChild(nCell);
 
-      tr.appendChild(el('td', '', p.tests.length ? String(round2(p.pointsPerTest)) : '—'));
+      head.appendChild(el('span', 'cfg-per',
+        p.tests.length ? '每組 ' + round2(p.pointsPerTest) + ' 分' : '—'));
 
-      var tdBtn = el('td');
-      var b = el('button', 'btn ghost small', '編輯');
-      b.onclick = function () { $('cfgQ').value = p.id; renderCfgEditor(p.id); };
-      tdBtn.appendChild(b);
-      tr.appendChild(tdBtn);
-      tb.appendChild(tr);
+      function toggle() {
+        cfgExpanded[p.id] = !cfgExpanded[p.id];
+        refreshCfgUI();
+      }
+      head.onclick = toggle;
+      head.onkeydown = function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+      };
+      wrap.appendChild(head);
+
+      if (open) wrap.appendChild(renderCfgEditor(p.id));
+      box.appendChild(wrap);
     });
   }
 
@@ -1275,12 +1467,9 @@
   }
 
   function renderCfgEditor(qid) {
-    var box = $('cfgEditor');
-    box.innerHTML = '';
+    var box = el('div', 'sub-body cfgeditor');
     var base = problemOf(qid);
     var draft = draftOf(qid);
-
-    box.appendChild(el('h3', '', base.id.toUpperCase() + ' ' + base.name));
 
     box.appendChild(el('p', 'muted small', '內建測資（取消勾選就不列入這次批改）'));
     base.tests.forEach(function (t) {
@@ -1385,12 +1574,12 @@
 
     box.appendChild(add);
     renderPreview();
+    return box;
   }
 
   function refreshCfgUI() {
     renderCfgTotals();
-    renderCfgTable();
-    renderCfgEditor($('cfgQ').value);
+    renderCfgList();
     if (viewerShowing && viewerShowing.type === 'tests' && !$('viewer').hidden) {
       renderTests(viewerShowing.qid);       // 檢視中的測資表要跟著設定一起變
     }
@@ -1441,7 +1630,19 @@
       }
     });
 
-    $('clearFiles').onclick = function () { submissions = []; results = null; renderFiles(); };
+    $('clearFiles').onclick = function () {
+      submissions = []; results = null; expanded = {}; seenGroup = {};
+      renderFiles();
+    };
+    $('expandAll').onclick = function () {
+      groupSubmissions().forEach(function (g) { expanded[g.student] = true; });
+      renderFiles();
+    };
+    $('collapseAll').onclick = function () { expanded = {}; renderFiles(); };
+    $('onlyProblem').onchange = function () {
+      onlyProblem = $('onlyProblem').checked;
+      renderFiles();
+    };
     $('autoMatch').onclick = autoMatch;
 
     $('loadDemo').onclick = function () {
@@ -1499,13 +1700,6 @@
     $('downloadTests').onclick = function () { download('hw1_測資.txt', testsAsText()); };
 
     /* ---- 測資與配分設定 ---- */
-    PROBLEMS.forEach(function (p) {
-      var o = el('option', '', p.id.toUpperCase() + ' ' + p.name);
-      o.value = p.id;
-      $('cfgQ').appendChild(o);
-    });
-    $('cfgQ').onchange = function () { renderCfgEditor($('cfgQ').value); };
-
     $('cfgExport').onclick = function () {
       download('hw1_批改設定.json', JSON.stringify(CFG, null, 1), 'application/json');
     };

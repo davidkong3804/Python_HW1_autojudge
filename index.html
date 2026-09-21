@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HW1 自動批改（助教用）</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%232f6fed%22%2F%3E%3Cpath%20d%3D%22M9%2016.5l4.8%204.8L23%2012%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%223.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E">
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -38,7 +39,7 @@
         <li>COOL 下載的檔名被加料也沒關係：<code>wang_98765_43210_B11901234_HW1.zip</code> 一樣抓得到 <code>B11901234</code>。</li>
         <li>其他寫法：<code>B11901234_q3.py</code>、<code>hw1_3.py</code>、<code>第3題.py</code> 也認得。</li>
         <li>萬一有人交 Colab 的 <code>.ipynb</code>：會自動拆成一格一格的 code cell（<code>!pip</code>、<code>%magic</code> 會被略過），再用「自動配對」判斷每一格是哪一題。</li>
-        <li>認不出來也沒關係，下面的表格可以直接用下拉選單改。</li>
+        <li>認不出來也沒關係：下面一位學生一列，點開就能逐題改題號，學號也可以整份一起改。</li>
       </ul>
     </details>
   </section>
@@ -46,17 +47,25 @@
   <!-- 步驟 2 -->
   <section class="card" id="filesCard" hidden>
     <h2><span class="step">2</span>確認對應關係 <span id="fileCount" class="pill"></span></h2>
-    <div class="tablewrap">
-      <table id="filesTable">
-        <thead><tr><th>檔案</th><th>學號</th><th>題號</th><th>行數</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
+    <p class="muted small" style="margin-top:-4px">
+      一位學生一列，點一下展開他的六題。學號或題號認錯可以直接在裡面改。
+    </p>
+
+    <div class="row gap wrap-row" id="subsToolbar">
+      <button class="btn ghost small" id="expandAll">全部展開</button>
+      <button class="btn ghost small" id="collapseAll">全部收合</button>
+      <label class="opt"><input type="checkbox" id="onlyProblem"> 只看需要處理的</label>
+      <span class="grow"></span>
+      <span id="subsStat" class="muted small"></span>
     </div>
-    <div class="row gap">
-      <button class="btn" id="autoMatch">自動配對（用第 1、2 筆測資試跑判斷題號）</button>
+
+    <div id="subsList" class="subs"></div>
+
+    <div class="row gap wrap-row" style="margin-top:14px">
+      <button class="btn" id="autoMatch" title="拿每題前 2 筆測資試跑，用跑出來的答案反推這個檔案是哪一題">自動配對題號（試跑前 2 筆測資）</button>
       <button class="btn danger ghost" id="clearFiles">全部清空</button>
-      <span id="fileWarn" class="warn"></span>
     </div>
+    <p id="fileWarn" class="warn small"></p>
   </section>
 
   <!-- 步驟 3 -->
@@ -129,26 +138,17 @@
 
     <div id="cfgTotals" class="totals"></div>
 
-    <div class="tablewrap">
-      <table id="cfgTable">
-        <thead><tr>
-          <th>題目</th><th>配分</th><th>啟用測資</th><th>每組分數</th><th></th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
+    <div class="cfghead">
+      <span></span><span>題目</span><span>配分</span><span>啟用測資</span><span>每組分數</span>
     </div>
+    <div id="cfgList" class="subs"></div>
 
     <div class="row gap wrap-row" style="margin-top:14px">
-      <label class="opt">編輯題目
-        <select id="cfgQ"></select>
-      </label>
       <button class="btn ghost" id="cfgExport">匯出設定 JSON</button>
       <button class="btn ghost" id="cfgImport">匯入設定 JSON</button>
       <button class="btn danger ghost" id="cfgReset">全部恢復原廠</button>
       <input type="file" id="cfgFile" accept=".json,application/json" hidden>
     </div>
-
-    <div id="cfgEditor" class="cfgeditor"></div>
 
     <details class="hint">
       <summary>自訂測資的正確輸出是怎麼來的？</summary>

@@ -45,6 +45,8 @@ footer { padding: 8px 16px 40px; }
   padding: 8px 14px; border-radius: 8px; font-size: 14px; cursor: pointer; font-family: inherit;
 }
 .btn:hover { border-color: var(--brand); }
+/* flex 容器預設會把按鈕壓到比文字還窄，字就會溢出框線 */
+.btn { flex: none; white-space: nowrap; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn.primary { background: var(--brand); color: #fff; border-color: var(--brand); font-weight: 600; }
 .btn.ghost { background: transparent; }
@@ -138,13 +140,27 @@ tbody tr:hover { background: color-mix(in srgb, var(--brand) 5%, transparent); }
 .totals-warn { color: var(--bad); font-size: 13px; margin-top: 6px; font-weight: 600; }
 .totals-note { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
 
-#cfgTable td.zero { color: var(--bad); font-weight: 600; }
+/* .sub-head 的 display:flex 排在這條後面，所以這裡要用兩個 class 提高優先權 */
+.cfghead, .sub-head.cfgrow-head-grid { display: grid;
+  grid-template-columns: 10px minmax(0,1fr) 150px 190px 96px; align-items: center; gap: 12px; }
+.cfghead { padding: 0 14px 6px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.cfghead > span:last-child { text-align: right; }
+.cfg-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 600; font-size: 14px; }
+.cfg-pts { display: flex; align-items: baseline; gap: 2px; }
+.cfg-n.zero { color: var(--bad); font-weight: 600; }
+.cfg-per { text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
+
+@media (max-width: 760px) {
+  .cfghead { display: none; }
+  .cfgrow-head-grid { grid-template-columns: 10px minmax(0,1fr) auto; row-gap: 6px; }
+  .cfg-n, .cfg-per { grid-column: 2 / -1; font-size: 12.5px; text-align: left; }
+}
 .ptsinput { width: 72px; font: inherit; font-size: 13px; padding: 4px 6px;
   border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
 
-.cfgeditor { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
-.cfgeditor h3 { font-size: 15px; margin: 0 0 10px; }
 .cfgeditor h4 { font-size: 14px; margin: 0 0 4px; }
+.cfgeditor > p:first-child { margin-top: 0; }
 .cfgeditor > p { margin: 14px 0 6px; }
 
 .cfgrow { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line);
@@ -170,4 +186,67 @@ tbody tr:hover { background: color-mix(in srgb, var(--brand) 5%, transparent); }
 
 @media (max-width: 640px) {
   .cfgrow-io { grid-template-columns: 1fr; }
+}
+
+/* ---- 步驟 2：一位學生一列，點開才展開六題 ---- */
+.grow { flex: 1; }
+#subsToolbar { margin: 10px 0 12px; }
+
+.subs { display: flex; flex-direction: column; gap: 8px; }
+
+.sub { border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+  overflow: hidden; transition: border-color .15s, box-shadow .15s; }
+.sub:hover { border-color: color-mix(in srgb, var(--brand) 45%, var(--line)); }
+.sub.open { border-color: color-mix(in srgb, var(--brand) 55%, var(--line));
+  box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.sub.work { border-left: 3px solid var(--warn); }
+
+.sub-head { display: flex; align-items: center; gap: 12px; padding: 11px 14px;
+  cursor: pointer; user-select: none; }
+.sub-head:hover { background: var(--bg); }
+.sub-head:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.sub-caret { color: var(--muted); font-size: 11px; flex: none; width: 10px;
+  transition: transform .15s; }
+.sub.open .sub-caret { transform: rotate(90deg); }
+
+.sub-id { display: flex; align-items: baseline; gap: 10px; min-width: 0; flex: 1; }
+.sub-id strong { font-family: var(--mono); font-size: 14px; letter-spacing: .01em; }
+.sub-name { color: var(--muted); font-size: 13px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.sub-count { color: var(--muted); font-size: 12.5px; flex: none;
+  width: 62px; text-align: right; }
+
+.tagline { flex: none; font-size: 11px; font-family: var(--mono); color: var(--muted);
+  border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px;
+  min-width: 40px; text-align: center; }
+
+.state { flex: none; font-size: 12px; font-weight: 600; border-radius: 999px;
+  padding: 3px 10px; white-space: nowrap; min-width: 112px; text-align: center; }
+.state.ok { background: var(--ok-bg); color: var(--ok); }
+.state.warn { background: var(--warn-bg); color: var(--warn); }
+.state.bad { background: var(--bad-bg); color: var(--bad); }
+
+.sub-body { border-top: 1px solid var(--line); padding: 10px 14px 12px; background: var(--bg); }
+.sub-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding-bottom: 10px; margin-bottom: 8px; border-bottom: 1px dashed var(--line); }
+.sub-tools input { font: inherit; font-size: 13px; font-family: var(--mono); padding: 4px 8px;
+  border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+
+.sub-file { display: grid; grid-template-columns: minmax(0,1fr) 290px 56px auto;
+  align-items: center; gap: 10px; padding: 5px 0; }
+.sub-file + .sub-file { border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.sub-file.unset { background: color-mix(in srgb, var(--bad) 7%, transparent);
+  margin: 0 -8px; padding: 5px 8px; border-radius: 6px; }
+.sub-fname { font-family: var(--mono); font-size: 12.5px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.sub-file select { font: inherit; font-size: 13px; padding: 4px 6px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink); width: 100%; }
+.sub-lines { text-align: right; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 720px) {
+  .sub-head { flex-wrap: wrap; gap: 8px; }
+  .sub-count, .tagline { display: none; }
+  .sub-file { grid-template-columns: 1fr auto; row-gap: 4px; }
+  .sub-file select { grid-column: 1 / -1; }
+  .sub-lines { display: none; }
 }
