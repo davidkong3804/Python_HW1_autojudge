@@ -3,26 +3,40 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HW1 自動批改（助教用）</title>
+<title>自動批改 · Autojudge</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%232f6fed%22%2F%3E%3Cpath%20d%3D%22M9%2016.5l4.8%204.8L23%2012%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%223.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E">
-<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/style.css?v=2.0">
 </head>
 <body>
 
 <header class="topbar">
-  <div class="wrap">
-    <h1>HW1 自動批改<span class="sub">助教用 · 全部在瀏覽器裡跑，程式不會上傳</span></h1>
-    <div id="engine" class="engine idle"><span class="dot"></span><span id="engineText">Python 尚未載入</span></div>
+  <div class="wrap topbar-row">
+    <div class="brand">
+      <h1>Autojudge<span class="sub">程式作業自動批改 · 助教用 · 全部在瀏覽器裡跑，程式不會上傳</span></h1>
+    </div>
+    <nav id="hwTabs" class="hwtabs" role="tablist" aria-label="切換作業"></nav>
+    <div class="topstate">
+      <div id="engine" class="engine idle"><span class="dot"></span><span id="engineText">Python 尚未載入</span></div>
+      <span id="saveState" class="savestate"></span>
+    </div>
   </div>
 </header>
 
 <main class="wrap">
 
+  <section class="hwinfo">
+    <h2 class="hwinfo-title"><span id="hwTitle"></span> <span id="hwSubtitle" class="muted"></span></h2>
+    <div class="hwinfo-meta">
+      <span><span class="muted">繳交格式</span> <code id="hwSubmission"></code></span>
+      <span><span class="muted">配分</span> <span id="hwGrading"></span></span>
+    </div>
+  </section>
+
   <!-- 步驟 1 -->
   <section class="card">
     <h2><span class="step">1</span>載入學生程式</h2>
     <div id="drop" class="drop">
-      <p class="big">把學生的 <code>學號_HW1.zip</code> 拖進來</p>
+      <p class="big" id="dropTitle">把學生的繳交檔拖進來</p>
       <p class="muted">幾十份一起拖也可以；COOL 整包下載的「zip 裡面還有 zip」也吃得下。散裝 .py、整個資料夾同樣支援。</p>
       <div class="btns">
         <button class="btn" id="pickFiles">選擇 .zip / .py 檔</button>
@@ -32,14 +46,24 @@
       <input type="file" id="fileInput" multiple accept=".py,.zip,.ipynb" hidden>
       <input type="file" id="dirInput" webkitdirectory directory multiple hidden>
     </div>
+
+    <div class="roster">
+      <strong>修課名單</strong> <span class="pill">選用</span>
+      <span id="rosterInfo" class="muted small"></span>
+      <button class="btn ghost small" id="rosterImport">匯入名單 CSV</button>
+      <button class="btn ghost danger small" id="rosterClear" hidden>清除</button>
+      <input type="file" id="rosterFile" accept=".csv,.txt,.tsv,text/csv" hidden>
+    </div>
+
     <details class="hint">
       <summary>檔名怎麼取？（自動辨識規則）</summary>
       <ul>
-        <li>公告格式：<code>B11901234_HW1.zip → B11901234_HW1/q1.py ~ q6.py</code>，學號與題號都會自動抓出來。</li>
-        <li>COOL 下載的檔名被加料也沒關係：<code>wang_98765_43210_B11901234_HW1.zip</code> 一樣抓得到 <code>B11901234</code>。</li>
-        <li>其他寫法：<code>B11901234_q3.py</code>、<code>hw1_3.py</code>、<code>第3題.py</code> 也認得。</li>
+        <li>公告格式：<code>B11901234_HW2.zip → B11901234_HW2/q1a.py …</code>，學號與題號都會自動抓出來。</li>
+        <li>COOL 下載的檔名被加料也沒關係：<code>wang_98765_43210_B11901234_HW2.zip</code> 一樣抓得到 <code>B11901234</code>。</li>
+        <li>其他寫法：<code>B11901234_q3.py</code>、<code>hw1_3.py</code>、<code>第3題.py</code>；有子題的作業認得 <code>q1a</code>、<code>q1_a</code>、<code>Q1(a)</code>、<code>1a</code>。</li>
+        <li>有子題的作業只寫 <code>q1.py</code> 分不出 a 還是 b，會標成「待指定」，請展開選題號。</li>
         <li>萬一有人交 Colab 的 <code>.ipynb</code>：會自動拆成一格一格的 code cell（<code>!pip</code>、<code>%magic</code> 會被略過），再用「自動配對」判斷每一格是哪一題。</li>
-        <li>認不出來也沒關係：下面一位學生一列，點開就能逐題改題號，學號也可以整份一起改。</li>
+        <li>修課名單：COOL 或 Excel 匯出的 CSV 都可以，只要有一欄是學號，旁邊的姓名欄會一起讀進來。</li>
       </ul>
     </details>
   </section>
@@ -47,9 +71,9 @@
   <!-- 步驟 2 -->
   <section class="card" id="filesCard" hidden>
     <h2><span class="step">2</span>確認對應關係 <span id="fileCount" class="pill"></span></h2>
-    <p class="muted small" style="margin-top:-4px">
-      一位學生一列，點一下展開他的六題。學號或題號認錯可以直接在裡面改。
-    </p>
+    <p class="muted small lead">一位學生一列，點一下展開他的檔案。學號或題號認錯可以直接在裡面改。</p>
+
+    <div id="hwMismatch" class="banner warn" hidden></div>
 
     <div class="row gap wrap-row" id="subsToolbar">
       <button class="btn ghost small" id="expandAll">全部展開</button>
@@ -63,67 +87,93 @@
 
     <div class="row gap wrap-row" style="margin-top:14px">
       <button class="btn" id="autoMatch" title="拿每題前 2 筆測資試跑，用跑出來的答案反推這個檔案是哪一題">自動配對題號（試跑前 2 筆測資）</button>
-      <button class="btn danger ghost" id="clearFiles">全部清空</button>
+      <span class="grow"></span>
+      <button class="btn danger ghost" id="clearFiles">清空這份作業</button>
     </div>
     <p id="fileWarn" class="warn small"></p>
   </section>
 
   <!-- 步驟 3 -->
   <section class="card">
-    <h2><span class="step">3</span>開始批改</h2>
+    <h2><span class="step">3</span>批改</h2>
     <div class="row gap wrap-row">
-      <button class="btn primary" id="runAll" disabled>開始批改</button>
-      <button class="btn" id="selfTest">先驗證參考解答（應得 100 分）</button>
-      <label class="opt">單筆測資逾時
-        <input type="number" id="timeout" value="8" min="1" max="60" step="1"> 秒
-      </label>
-      <label class="opt">比對方式
-        <select id="compareMode">
-          <option value="strict" selected>嚴格（僅忽略行尾空白與結尾空行）</option>
-          <option value="trim">忽略每行前後空白</option>
-          <option value="loose">忽略所有空白與英文大小寫</option>
-        </select>
-      </label>
-      <label class="opt"><input type="checkbox" id="stopOnFirst"> 每題錯一筆就跳過剩下的（比較快）</label>
-      <label class="opt" title="例如印完答案後又寫 input('按 Enter 結束')，輸出其實是對的">
-        <input type="checkbox" id="lenientRe" checked> 只要輸出正確就給分（印完才出錯不扣）</label>
-      <label class="opt" title="老師規定一行就是一次 input()，所以預設關閉。打開後，把一行拆成多次 input() 讀的同學會改用逐行輸入重跑一次">
-        <input type="checkbox" id="lenientInput"> （非標準）相容「一行拆成多次 input()」</label>
+      <button class="btn primary big" id="runAll" disabled>開始批改</button>
+      <button class="btn danger" id="cancelRun" hidden>取消</button>
+      <button class="btn ghost" id="selfTest" title="用參考解答跑一次全部測資，應該拿滿分。結果只顯示在這裡，不會蓋掉成績表">先驗證參考解答</button>
     </div>
+    <p id="selfTestResult" class="selftest" hidden></p>
     <div id="progressBox" hidden>
       <div class="bar"><div id="bar"></div></div>
-      <p id="progressText" class="muted"></p>
+      <p id="progressText" class="muted small" aria-live="polite"></p>
     </div>
+
+    <details class="options">
+      <summary>批改選項 <span class="muted small">（預設就是老師規定的標準，通常不用動）</span></summary>
+      <div class="optgrid">
+        <label class="opt">單筆測資逾時
+          <input type="number" id="timeout" value="8" min="1" max="60" step="1"> 秒
+        </label>
+        <label class="opt">比對方式
+          <select id="compareMode">
+            <option value="strict" selected>嚴格（僅忽略行尾空白與結尾空行）</option>
+            <option value="trim">忽略每行前後空白</option>
+            <option value="loose">忽略所有空白與英文大小寫</option>
+          </select>
+        </label>
+        <label class="opt" title="例如印完答案後又寫 input('按 Enter 結束')，輸出其實是對的">
+          <input type="checkbox" id="lenientRe" checked> 只要輸出正確就給分（印完才出錯不扣）</label>
+        <label class="opt" title="老師規定一行就是一次 input()，所以預設關閉。打開後，把一行拆成多次 input() 讀的同學會改用逐行輸入重跑一次">
+          <input type="checkbox" id="lenientInput"> （非標準）相容「一行拆成多次 input()」</label>
+        <label class="opt" title="每題錯一筆就不跑剩下的，只適合快速看誰全對。跑出來的分數會偏低，不能拿來登記">
+          <input type="checkbox" id="stopOnFirst"> 快速篩檢（錯一筆就跳過該題其餘測資，<strong>分數不可登記</strong>）</label>
+      </div>
+    </details>
   </section>
 
   <!-- 結果 -->
   <section class="card" id="resultCard" hidden>
-    <h2><span class="step">4</span>成績</h2>
-    <div class="row gap wrap-row">
-      <button class="btn" id="exportCsv">匯出 CSV（Excel 可直接開）</button>
-      <button class="btn" id="exportJson">匯出 JSON（含每筆細節）</button>
-      <span id="summaryStat" class="pill"></span>
+    <h2><span class="step">4</span>成績 <span id="summaryStat" class="pill"></span></h2>
+
+    <div id="staleBanner" class="banner warn" hidden></div>
+
+    <div class="row gap wrap-row scoretools">
+      <input type="search" id="scoreSearch" placeholder="搜尋學號或姓名" aria-label="搜尋學號或姓名">
+      <select id="scoreFilter" aria-label="篩選">
+        <option value="all">全部</option>
+        <option value="notfull">沒滿分</option>
+        <option value="flags">有寫法提示 ⚑</option>
+        <option value="adjusted">有手動調整 ✎</option>
+        <option value="missing">未繳交</option>
+        <option value="notroster">不在名單</option>
+        <option value="dirty">需重批</option>
+      </select>
+      <span class="grow"></span>
+      <button class="btn primary" id="exportCsv" title="每位學生一列：各題分數、總分、手動調整、寫法提示。Excel 可直接開">匯出成績 CSV</button>
+      <button class="btn" id="exportFeedback" title="每位學生一段文字：各題分數、錯在哪一筆、手動調整原因。可以貼到 COOL 評語">匯出回饋</button>
+      <button class="btn ghost" id="exportJson" title="逐筆明細，留存備查或交給其他助教">明細 JSON</button>
     </div>
-    <div id="runConfigInfo" class="runinfo"></div>
-    <p id="gradeNote" class="warn small" hidden></p>
+
+    <div id="gradeNote" class="notes-box warn small" hidden></div>
     <div class="tablewrap">
-      <table id="scoreTable">
-        <thead><tr id="scoreHead"></tr></thead>
+      <table id="scoreTable" class="scores">
+        <thead></thead>
         <tbody></tbody>
+        <tfoot></tfoot>
       </table>
     </div>
-    <p class="muted small">點任何一格可以看那一題每一筆測資的結果與差異。</p>
-    <div id="detail" class="detail" hidden></div>
+    <p class="muted small">點分數看那一題的程式碼與逐筆結果，也可以在那裡手動加減分。點欄位標題排序。
+      <span class="legend">⚑ 寫法提示　✎ 手動調整　⚠ 多份檔案取最高</span></p>
+    <div id="runConfigInfo" class="runinfo"></div>
   </section>
 
   <!-- 測資檢視 -->
   <section class="card">
     <h2>測資與參考解答</h2>
     <div class="row gap wrap-row">
-      <select id="viewQ"></select>
+      <select id="viewQ" aria-label="選擇題目"></select>
       <button class="btn" id="viewTests">檢視測資</button>
       <button class="btn ghost" id="viewSol">檢視參考解答</button>
-      <button class="btn ghost" id="downloadTests">下載測資（.zip 用的純文字格式）</button>
+      <button class="btn ghost" id="downloadTests">下載測資（純文字）</button>
     </div>
     <div id="viewer" class="viewer" hidden></div>
   </section>
@@ -131,8 +181,8 @@
   <!-- 測資與配分設定 -->
   <section class="card" id="cfgCard">
     <h2>測資與配分設定 <span class="pill">進階</span></h2>
-    <p class="muted small" style="margin-top:-4px">
-      可以關掉某些測資、加自己的測資、改每題配分。<strong>題目總分固定，啟用中的測資平分</strong>——
+    <p class="muted small lead">
+      可以關掉某些測資、加自己的測資、改每題配分（每份作業各自一套）。<strong>題目總分固定，啟用中的測資平分</strong>——
       關掉一組不會讓總分變少，而是讓剩下的每一組變重。設定存在這台瀏覽器裡，換電腦或換助教請用下面的匯出／匯入。
     </p>
 
@@ -153,29 +203,49 @@
     <details class="hint">
       <summary>自訂測資的正確輸出是怎麼來的？</summary>
       <ul>
-        <li>助教只要輸入 input，正確輸出由這個頁面<strong>實際執行 <code>solutions/qN.py</code> 參考解答</strong>產生，
+        <li>助教只要輸入 input，正確輸出由這個頁面<strong>實際執行參考解答</strong>產生，
             和 <code>tools/generate_tests.py</code> 的做法一致——答案不是手打的，不會打錯。</li>
         <li>參考解答跑這筆輸入會出錯（例如格式不合題目規定），就不會讓你加進去，並且會把錯誤訊息顯示出來。</li>
         <li>多行輸入請一行一行打；送出前會照題目的格式跑一次給你看結果。</li>
-        <li>匯出的 JSON 可以交給命令列版：<code>python3 tools/grade_cli.py 繳交資料夾/ --config 設定.json</code>，
+        <li>匯出的 JSON 可以交給命令列版：<code>python3 tools/grade_cli.py 繳交資料夾/ --hw hw2 --config 設定.json</code>，
             讓兩邊用同一套設定，不會算出不同的成績。</li>
       </ul>
     </details>
   </section>
 </main>
 
+<!-- 學生細節抽屜 -->
+<div id="drawerMask" class="mask" hidden></div>
+<aside id="drawer" class="drawer" hidden aria-labelledby="drawerTitle" role="dialog">
+  <div class="drawer-head">
+    <div class="drawer-who">
+      <strong id="drawerTitle"></strong>
+      <span id="drawerName" class="muted"></span>
+      <span id="drawerTotal" class="pill"></span>
+    </div>
+    <div class="drawer-nav">
+      <button class="btn small ghost" id="drawerPrev" title="上一位（K）">‹ 上一位</button>
+      <span id="drawerPos" class="muted small"></span>
+      <button class="btn small ghost" id="drawerNext" title="下一位（J）">下一位 ›</button>
+      <button class="btn small ghost" id="drawerClose" aria-label="關閉（Esc）">✕</button>
+    </div>
+  </div>
+  <div id="drawerTabs" class="qtabs" role="tablist" aria-label="題目"></div>
+  <div id="drawerBody" class="drawer-body"></div>
+  <div class="drawer-foot muted small">J / K 上一位、下一位 · ← / → 切換題目 · Esc 關閉</div>
+</aside>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
 <footer class="wrap muted small">
-  助教工具 · 學生程式在你自己的瀏覽器裡執行，不會上傳到任何伺服器。<br>
+  助教工具 · 學生程式在你自己的瀏覽器裡執行，不會上傳到任何伺服器；繳交清單與成績自動存在這台電腦的瀏覽器。<br>
   測資由 <code>tools/generate_tests.py</code> 產生、<code>tools/verify_tests.py</code> 驗證（含 mutation testing）、
-  <code>tools/stress_test.py</code> 抗壓測試；學號辨識與配分算法另有 <code>tools/test_detect.py</code>、
-  <code>tools/test_config.py</code> 與網頁版對拍。使用說明與維護方式見
+  <code>tools/stress_test.py</code> 抗壓測試。新增作業見 <code>hw/README.md</code>，使用說明見
   <a href="https://github.com/davidkong3804/Python_HW1_autojudge#readme">GitHub 上的 README</a>。
 </footer>
 
 <script src="vendor/jszip/jszip.min.js"></script>
-<script src="data/tests.js"></script>
-<script src="data/solutions.js"></script>
-<script src="data/mutants.js"></script>
-<script src="assets/app.js"></script>
+<script src="data/assignments.js?v=2.0"></script>
+<script src="assets/app.js?v=2.0"></script>
 </body>
 </html>

@@ -65,16 +65,43 @@ CASES = [
         "認不出題號就要留空：不可以被路徑裡的 _HW1 誤判成 Q1 而默默掛到第一題",
     ),
     ("B11901234_HW1/hw1_3.py", "B11901234", "q3", "檔名寫 hw1_3 仍然要判成 Q3"),
+    ("B11901234_HW1/q12.py", "B11901234", "", "HW1 沒有第 12 題：留空，不可以亂掛"),
+    ("B11901234_HW1/2nd_try_q4.py", "B11901234", "q4", "檔名前面有別的數字，以 q4 為準"),
 ]
 
+# HW2 有子題：q1a、q1b … q4b、q5、q6
+CASES_HW2 = [
+    ("B11901234_HW2/q1a.py", "B11901234", "q1a", "公告格式的子題"),
+    ("B11901234_HW2/Q1B.py", "B11901234", "q1b", "大寫子題"),
+    ("B11901234_HW2/q2_a.py", "B11901234", "q2a", "題號和子題中間有底線"),
+    ("B11901234_HW2/Q3(b).py", "B11901234", "q3b", "子題寫在括號裡"),
+    ("B11901234_HW2/4b.py", "B11901234", "q4b", "只寫數字 + 子題"),
+    ("B11901234_HW2/hw2_2b.py", "B11901234", "q2b", "hw2_2b：拿掉作業編號後是 2b"),
+    ("B11901234_HW2/第1題a.py", "B11901234", "q1a", "中文題號 + 子題"),
+    ("B11901234_HW2/q5.py", "B11901234", "q5", "沒有子題的題目照舊"),
+    ("B11901234_HW2/q1.py", "B11901234", "",
+     "有子題的題目只寫 q1：分不出 a 還是 b，必須留空讓助教指定，不可以猜"),
+    ("B11901234_HW2/q1_final.py", "B11901234", "", "q1_final 的 f 不是子題，而且 q1 本身有子題 -> 留空"),
+    ("B11901234_HW2/q6_date.py", "B11901234", "q6", "q6_date 的 d 不是子題"),
+    ("wang_98765_43210_B11901234_HW2.zip/B11901234_HW2/q4a.py", "B11901234", "q4a", "COOL 加料檔名"),
+]
 
-def qid_for(path):
+QIDS = {
+    "hw1": ["q1", "q2", "q3", "q4", "q5", "q6"],
+    "hw2": ["q1a", "q1b", "q2a", "q2b", "q3a", "q3b", "q4a", "q4b", "q5", "q6"],
+}
+
+ALL = [("hw1",) + c for c in CASES] + [("hw2",) + c for c in CASES_HW2]
+
+
+def qid_for(path, hw):
     """和 grade_cli.py / app.js 的呼叫方式一致：先看檔名，再看整條路徑。"""
     base = os.path.splitext(os.path.basename(path))[0]
-    return grade_cli.detect_qid(base) or grade_cli.detect_qid(path)
+    qids = QIDS[hw]
+    return grade_cli.detect_qid(base, qids) or grade_cli.detect_qid(path, qids)
 
 
-def js_results(paths):
+def js_results(items):
     """把 app.js 的辨識段落抓出來，用 node 跑一遍。node 不在就回傳 None。"""
     node = shutil.which("node") or shutil.which("nodejs")
     if not node:
@@ -87,18 +114,19 @@ def js_results(paths):
     block = src[src.index("\n", a) + 1:b]
 
     harness = block + """
-var paths = JSON.parse(process.argv[2]);
-console.log(JSON.stringify(paths.map(function (p) {
+var items = JSON.parse(process.argv[2]);
+console.log(JSON.stringify(items.map(function (it) {
+  var p = it[0], qids = it[1];
   var base = p.split('/').pop().replace(/\\.[^.]*$/, '');
-  return { student: detectStudent(p), qid: detectQid(base) || detectQid(p) };
+  return { student: detectStudent(p), qid: detectQid(base, qids) || detectQid(p, qids) };
 })));
 """
-    tmp = tempfile.mkdtemp(prefix="hw1_detect_")
+    tmp = tempfile.mkdtemp(prefix="autojudge_detect_")
     try:
         js = os.path.join(tmp, "detect.js")
         with open(js, "w", encoding="utf-8") as fh:
             fh.write(harness)
-        proc = subprocess.run([node, js, json.dumps(paths)],
+        proc = subprocess.run([node, js, json.dumps(items)],
                               capture_output=True, text=True, timeout=60)
         if proc.returncode != 0:
             raise RuntimeError("node 執行失敗：%s" % proc.stderr.strip())
@@ -107,29 +135,65 @@ console.log(JSON.stringify(paths.map(function (p) {
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+FEATURE_CASES = [
+    ("for i in range(3):\n    print(i)\n", ["for"]),
+    ("i = 0\nwhile i < 3:\n    i += 1\n", ["while"]),
+    ("print(' '.join(input().split()[::-1]))\n", ["slice"]),
+    ("s = [x for x in range(3)]\n", ["comp"]),
+    ("def f(a):\n    return set(a)\n", ["def", "set"]),
+    ("s = {1, 2}\n", ["set"]),
+    ("from datetime import datetime\nimport os.path\n", ["import:datetime", "import:os"]),
+    ("print('unclosed\n", None),
+]
+
+
+def check_features():
+    """寫法分析：grade_cli 從 worker.js 抓同一段 Python 來跑，這裡確認抓得到、結果正確。"""
+    bad = []
+    for code, want in FEATURE_CASES:
+        got = grade_cli.code_features(code)
+        if got != want:
+            bad.append("寫法分析 %r：預期 %s，實際 %s" % (code, want, got))
+    checks = [
+        (["loop"], ["slice"], ["沒有用到迴圈"]),
+        (["slice", "no-loop"], ["slice", "for"], ["用了迴圈（這題規定不能用）"]),
+        (["while", "def"], ["for", "def"], ["沒有用到 while 迴圈"]),
+        (["import:datetime"], [], ["沒有 import datetime"]),
+        (["loop"], None, []),
+    ]
+    for chk, feats, want in checks:
+        got = grade_cli.check_violations(chk, feats)
+        if got != want:
+            bad.append("寫法要求 %s + %s：預期 %s，實際 %s" % (chk, feats, want, got))
+    print("  %s寫法分析：%d 個案例%s" % (GREEN if not bad else RED,
+                                     len(FEATURE_CASES) + len(checks),
+                                     "全部正確" + RESET if not bad else "有錯" + RESET))
+    return bad
+
+
 def main():
     failures = []
     print("=" * 72)
     print("學號 / 題號辨識")
     print("=" * 72)
 
-    for path, want_id, want_qid, note in CASES:
-        got_id, got_qid = grade_cli.detect_student(path), qid_for(path)
+    for hw, path, want_id, want_qid, note in ALL:
+        got_id, got_qid = grade_cli.detect_student(path), qid_for(path, hw)
         ok = got_id == want_id and got_qid == want_qid
-        print("  %s %-10s %-4s %s" %
-              (GREEN + "OK  " + RESET if ok else RED + "FAIL" + RESET, got_id, got_qid, note))
+        print("  %s %s %-10s %-4s %s" %
+              (GREEN + "OK  " + RESET if ok else RED + "FAIL" + RESET, hw, got_id, got_qid, note))
         if not ok:
             failures.append("%s\n       預期 %s / %s，實際 %s / %s"
                             % (path, want_id, want_qid, got_id, got_qid))
 
     print()
-    js = js_results([c[0] for c in CASES])
+    js = js_results([[c[1], QIDS[c[0]]] for c in ALL])
     if js is None:
         print("  %s找不到 node，略過 app.js 的交叉比對%s" % (YELLOW, RESET))
     else:
         mismatch = 0
-        for (path, want_id, want_qid, _note), r in zip(CASES, js):
-            py = (grade_cli.detect_student(path), qid_for(path))
+        for (hw, path, want_id, want_qid, _note), r in zip(ALL, js):
+            py = (grade_cli.detect_student(path), qid_for(path, hw))
             if (r["student"], r["qid"]) != py:
                 mismatch += 1
                 failures.append("app.js 與 grade_cli.py 不一致：%s\n       app.js %s / %s，"
@@ -139,8 +203,10 @@ def main():
                 mismatch += 1  # 已經在上面記過，這裡只計數
         if mismatch == 0:
             print("  %s交叉比對：app.js 與 grade_cli.py 對 %d 條路徑的判斷完全一致%s"
-                  % (GREEN, len(CASES), RESET))
+                  % (GREEN, len(ALL), RESET))
 
+    print()
+    failures.extend(check_features())
     print()
     print("=" * 72)
     if failures:

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-HW1 命令列批改（網頁版的離線備援；行為與網頁完全一致）
+命令列批改（網頁版的離線備援；行為與網頁完全一致，所有作業共用）
 
 用法：
-    python3 tools/grade_cli.py 繳交資料夾/            # 裡面放一堆 學號_HW1.zip
-    python3 tools/grade_cli.py B11901234_HW1.zip ...  # 直接指定
+    python3 tools/grade_cli.py 繳交資料夾/            # 裡面放一堆 學號_HW2.zip，作業從檔名自動判斷
+    python3 tools/grade_cli.py 繳交資料夾/ --hw hw2   # 指定作業
+    python3 tools/grade_cli.py B11901234_HW1.zip ...  # 直接指定檔案
     python3 tools/grade_cli.py 繳交資料夾/ -o 成績.csv --timeout 8
 
 輸出：終端機表格 + CSV（UTF-8 with BOM，Excel 直接開）
@@ -25,7 +26,8 @@ import tempfile
 import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-QID_RE = re.compile(r"(?:^|[^a-z0-9])q\s*([1-6])(?![0-9])", re.I)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import hwlib  # noqa: E402
 
 
 def decode_source(raw):
@@ -47,9 +49,8 @@ def decode_source(raw):
     return text.lstrip("\ufeff").replace("\x00", "").replace("\r\n", "\n").replace("\r", "\n")
 
 
-def load_manifest():
-    with open(os.path.join(ROOT, "data", "tests.json"), encoding="utf-8") as fh:
-        return json.load(fh)
+def load_manifest(hw_id):
+    return hwlib.load_manifest(hw_id)
 
 
 def apply_config(manifest, path):
@@ -133,19 +134,62 @@ def alt_input(text):
     return alt if (alt != str(text).strip() and "\n" in alt) else ""
 
 
-def detect_qid(name):
+# 題號：q3、Q3、q1a、q1_a、Q1(a)、第3題、第1題a、hw2_3b…
+# 這段規則與 assets/app.js 的 detectQid 必須一致，由 tools/test_detect.py 對拍把關。
+QID_RE = re.compile(
+    r"(?:^|[^a-z0-9])q\s*(\d{1,2})(?:\s*[-_.]?\s*\(?\s*([a-z])\s*\)?(?![a-z0-9]))?(?![0-9])",
+    re.I | re.ASCII)
+QID_CN_RE = re.compile(
+    r"第\s*(\d{1,2})\s*題(?:\s*[-_.]?\s*\(?\s*([a-z])\s*\)?(?![a-z0-9]))?", re.I | re.ASCII)
+QID_BARE_RE = re.compile(
+    r"(?:^|[^0-9])(\d{1,2})(?:[-_.]?\(?([a-z])\)?(?![a-z0-9]))?(?![0-9])", re.I | re.ASCII)
+
+
+def qid_from_parts(num, letter, qids):
+    """有子題的作業（q1a、q1b），檔名只寫 q1 就分不出 a 還是 b -> 回傳空字串讓助教指定。"""
+    n = str(int(num))
+    if letter:
+        sub = "q" + n + letter.lower()
+        if sub in qids:
+            return sub
+    return "q" + n if ("q" + n) in qids else ""
+
+
+def detect_qid(name, qids):
     m = QID_RE.search(name)
     if m:
-        return "q" + m.group(1)
-    m = re.search(r"第\s*([1-6])\s*題", name)
+        q = qid_from_parts(m.group(1), m.group(2), qids)
+        if q:
+            return q
+    m = QID_CN_RE.search(name)
     if m:
-        return "q" + m.group(1)
+        q = qid_from_parts(m.group(1), m.group(2), qids)
+        if q:
+            return q
     # 先把學號和「HW1」這種作業編號拿掉再找數字：不然路徑裡的 _HW1 會讓
     # 任何認不出題號的檔案都被判成 Q1，默默掛到第一題去
     stripped = re.sub(r"HW\s*\d+", "_", name, flags=re.I)
-    stripped = re.sub(r"[A-Za-z]?\d{6,12}", "_", stripped)
-    hits = re.findall(r"(?:^|[^0-9])([1-6])(?![0-9])", stripped)
-    return "q" + hits[-1] if hits else ""
+    stripped = re.sub(r"[A-Za-z]?\d{6,12}", "_", stripped, flags=re.ASCII)
+    last, pos = "", 0
+    while True:
+        m = QID_BARE_RE.search(stripped, pos)
+        if not m:
+            break
+        q = qid_from_parts(m.group(1), m.group(2), qids)
+        if q:
+            last = q
+        pos = m.start() + 1
+    return last
+
+
+def detect_hw(path):
+    """繳交的作業編號：公告格式是「學號_HW1」，抓出 hw1。"""
+    parts = [p for p in path.replace("\\", "/").split("/") if p]
+    for part in reversed(parts):
+        m = re.search(r"(?:^|[^A-Za-z])(HW\s*\d+)$", re.sub(r"\.(zip|py|ipynb)$", "", part, flags=re.I), re.I)
+        if m:
+            return re.sub(r"\s+", "", m.group(1)).lower()
+    return ""
 
 
 # 學號有兩種長相：
@@ -226,7 +270,10 @@ def detect_student(relpath):
     # 絕對不能拿檔名(q1/q2...)當學號，否則一個人的六個檔會變成六位「學生」
     if parts:
         return parts[-1]
-    return base or "未知"
+    cleaned = re.sub(r"(?:^|[^a-z0-9])q\s*\d{1,2}[a-z]?(?![0-9])", "", base, count=1, flags=re.I | re.ASCII)
+    cleaned = re.sub(r"第\s*\d{1,2}\s*題", "", cleaned, count=1, flags=re.ASCII)
+    cleaned = re.sub(r"^[_\-.\s]+|[_\-.\s]+$", "", cleaned)
+    return cleaned or "未知"
 
 
 def collect(paths, workdir):
@@ -318,6 +365,51 @@ except BaseException:
 MEM_LIMIT_MB = 1024
 
 
+def _load_features():
+    """寫法分析（有沒有迴圈、函式、set…）直接用 assets/worker.js 裡那一段 Python，
+    網頁和命令列就不會各寫一份、慢慢變得不一樣。只 parse、不執行學生程式。"""
+    with open(os.path.join(ROOT, "assets", "worker.js"), encoding="utf-8") as fh:
+        src = fh.read()
+    a = src.index("# --8<-- features:start")
+    b = src.index("# --8<-- features:end")
+    ns = {"_clean_source": lambda code: code.replace("\r\n", "\n").replace("\r", "\n")
+          .replace("\x00", "").lstrip("\ufeff")}
+    exec(src[src.index("\n", a) + 1:b], ns)   # noqa: S102
+    return ns["_features"]
+
+
+code_features = _load_features()
+
+CHECK_TEXT = {
+    "loop": "沒有用到迴圈", "for": "沒有用到 for 迴圈", "while": "沒有用到 while 迴圈",
+    "no-loop": "用了迴圈（這題規定不能用）", "def": "沒有定義函式（def）",
+    "set": "沒有用到 set", "slice": "沒有用到切片",
+}
+
+
+def check_violations(checks, features):
+    """與 assets/app.js 的 checkViolations 相同：只提示，不扣分。"""
+    if not checks or features is None:
+        return []
+    has = set(features)
+    loop = bool(has & {"for", "while", "comp"})
+    out = []
+    for c in checks:
+        if c == "loop" and not loop:
+            out.append(CHECK_TEXT[c])
+        elif c == "for" and not (has & {"for", "comp"}):
+            out.append(CHECK_TEXT[c])
+        elif c == "while" and "while" not in has:
+            out.append(CHECK_TEXT[c])
+        elif c == "no-loop" and loop:
+            out.append(CHECK_TEXT[c])
+        elif c in ("def", "set", "slice") and c not in has:
+            out.append(CHECK_TEXT[c])
+        elif c.startswith("import:") and c not in has:
+            out.append("沒有 import " + c[7:])
+    return out
+
+
 def _child_setup():
     """新的 process group（逾時才殺得乾淨）+ 記憶體上限（擋 [0]*10**9）"""
     os.setsid()
@@ -361,9 +453,11 @@ def run_one(code, stdin_text, timeout, workdir):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="HW1 命令列自動批改")
+    ap = argparse.ArgumentParser(description="命令列自動批改")
     ap.add_argument("paths", nargs="+", help="繳交的 zip / 資料夾 / .py")
-    ap.add_argument("-o", "--out", default="hw1_成績.csv")
+    ap.add_argument("--hw", default="",
+                    help="作業（%s）；不填就從檔名的 _HWn 自動判斷" % " / ".join(hwlib.list_hws()))
+    ap.add_argument("-o", "--out", default="", help="成績 CSV（預設 <作業>_成績.csv）")
     ap.add_argument("--timeout", type=float, default=8)
     ap.add_argument("--mode", choices=["strict", "trim", "loose"], default="strict")
     ap.add_argument("--detail", default="", help="另外輸出逐筆明細 JSON")
@@ -376,7 +470,33 @@ def main():
                          "（老師規定一行就是一次 input()，所以預設關閉）")
     args = ap.parse_args()
 
-    manifest = load_manifest()
+    hw_id = args.hw.strip().lower() if args.hw else ""
+    workdir = tempfile.mkdtemp(prefix="autojudge_")
+    try:
+        files = collect(args.paths, workdir)
+    except BaseException:
+        shutil.rmtree(workdir, ignore_errors=True)
+        raise
+    if not hw_id:
+        seen = {}
+        for disp, _code in files:
+            h = detect_hw(disp)
+            if h:
+                seen[h] = seen.get(h, 0) + 1
+        if len(seen) == 1:
+            hw_id = next(iter(seen))
+        else:
+            shutil.rmtree(workdir, ignore_errors=True)
+            raise SystemExit("看不出這批是哪一份作業%s，請用 --hw 指定（%s）"
+                             % ("（檔名裡有 %s）" % "、".join(sorted(seen)) if seen else "",
+                                " / ".join(hwlib.list_hws())))
+        print("作業：%s（從檔名判斷，不對請用 --hw 指定）" % hw_id.upper())
+    if hw_id not in hwlib.list_hws():
+        shutil.rmtree(workdir, ignore_errors=True)
+        raise SystemExit("沒有 %s 的測資。現有作業：%s" % (hw_id, "、".join(hwlib.list_hws())))
+    out_path = args.out or ("%s_成績.csv" % hw_id)
+
+    manifest = load_manifest(hw_id)
     cfg_notes = apply_config(manifest, args.config) if args.config else []
     problems = {p["id"]: p for p in manifest["problems"]}
     qids = [p["id"] for p in manifest["problems"]]
@@ -391,18 +511,16 @@ def main():
     for line in summary_lines:
         print("  " + line)
 
-    workdir = tempfile.mkdtemp(prefix="hw1grade_")
     try:
-        files = collect(args.paths, workdir)
         if not files:
             print("找不到任何 .py 檔。")
             return 1
 
         scores, detail = {}, {}
         for disp, code in files:
-            qid = detect_qid(os.path.splitext(os.path.basename(disp))[0]) or detect_qid(disp)
+            qid = detect_qid(os.path.splitext(os.path.basename(disp))[0], qids) or detect_qid(disp, qids)
             if qid not in problems:
-                print("略過（認不出題號）：%s" % disp)
+                print("略過（認不出題號，請改檔名或用網頁版指定）：%s" % disp)
                 continue
             student = detect_student(disp)
             prob = problems[qid]
@@ -446,6 +564,7 @@ def main():
                                      "expected": t["expected"], "actual": out[:3000].rstrip("\n"),
                                      "stderr": err[-800:], "viaAlt": via_alt})
             rec["score"] = round(rec["score"], 2)
+            rec["flags"] = check_violations(prob.get("checks"), code_features(code))
             prev = scores.setdefault(student, {}).get(qid)
             if prev is None or rec["score"] > prev["score"]:
                 scores[student][qid] = rec
@@ -469,20 +588,22 @@ def main():
             for q in qids:
                 rec = scores[student].get(q)
                 row.append("%d/%d" % (rec["passed"], len(rec["cases"])) if rec else "未繳交")
+            row.append("；".join("%s %s" % (q.upper(), f) for q in qids
+                                for f in (scores[student].get(q) or {}).get("flags", [])))
             rows.append(row)
 
         head = ["學號"] + ["%s(%g)" % (q.upper(), problems[q]["points"]) for q in qids] + \
-               ["總分"] + ["%s通過筆數" % q.upper() for q in qids]
+               ["總分"] + ["%s通過筆數" % q.upper() for q in qids] + ["寫法提示"]
         def safe(v):                       # 避免 Excel 把 =、+ 開頭當公式
             v = "" if v is None else str(v)
-            return "'" + v if v[:1] in "=+-@" and not v.replace(".", "").isdigit() else v
+            return "'" + v if v and v[0] in "=+-@" and not re.fullmatch(r"-?\d+(\.\d+)?", v) else v
 
-        with io.open(args.out, "w", encoding="utf-8-sig", newline="") as fh:
+        with io.open(out_path, "w", encoding="utf-8-sig", newline="") as fh:
             w = csv.writer(fh)
             w.writerow(head)
             w.writerows([[safe(c) for c in r] for r in rows])
             w.writerow([])
-            w.writerow(["批改設定"])
+            w.writerow(["批改設定", manifest.get("title", hw_id.upper())])
             for line in summary_lines:
                 w.writerow([safe(line)])
         reok_total = sum(rec.get("reok", 0) for qs in scores.values() for rec in qs.values())
@@ -493,10 +614,11 @@ def main():
         if alt_total:
             print("注意：有 %d 筆是同學把一行輸入拆成好幾個 input() 讀，已改用逐行輸入重跑並以答案為準。"
                   % alt_total)
-        print("\n共 %d 位學生，滿分 %g。成績已寫入 %s" % (len(scores), round(total_points, 2), args.out))
+        print("\n共 %d 位學生，滿分 %g。成績已寫入 %s" % (len(scores), round(total_points, 2), out_path))
 
         if args.detail:
             payload = {
+                "hw": hw_id,
                 "summary": summary_lines,
                 "problems": [{"id": p["id"], "points": p["points"], "tests": len(p["tests"]),
                               "pointsPerTest": round(p["pointsPerTest"], 4)}

@@ -78,7 +78,7 @@ CASES = [
 
 
 def main():
-    work = tempfile.mkdtemp(prefix="hw1stress_")
+    work = tempfile.mkdtemp(prefix="autojudge_stress_")
     victim = None
     try:
         for name, data, _expect, _desc in CASES:
@@ -89,8 +89,8 @@ def main():
         # 排在污染者後面的「無辜受害者」，分數必須不受影響
         victim = os.path.join(work, "submissions", "zzz_victim_HW1")
         os.makedirs(victim, exist_ok=True)
-        shutil.copy(os.path.join(ROOT, "solutions", "q1.py"), os.path.join(victim, "q1.py"))
-        shutil.copy(os.path.join(ROOT, "solutions", "q6.py"), os.path.join(victim, "q6.py"))
+        shutil.copy(os.path.join(ROOT, "hw", "hw1", "solutions", "q1.py"), os.path.join(victim, "q1.py"))
+        shutil.copy(os.path.join(ROOT, "hw", "hw1", "solutions", "q6.py"), os.path.join(victim, "q6.py"))
 
         out_csv = os.path.join(work, "scores.csv")
         cmd = [sys.executable, os.path.join(ROOT, "tools", "grade_cli.py"),

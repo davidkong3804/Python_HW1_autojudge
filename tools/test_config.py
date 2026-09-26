@@ -31,6 +31,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
 import grade_cli  # noqa: E402
+import hwlib  # noqa: E402
 
 RED, GREEN, YELLOW, RESET = "\033[31m", "\033[32m", "\033[33m", "\033[0m"
 
@@ -69,15 +70,25 @@ CASES = [
 ]
 
 
-def load_manifest():
-    with open(os.path.join(ROOT, "data", "tests.json"), encoding="utf-8") as fh:
-        return json.load(fh)
+# HW2：子題各 10 分，確認子題題號（q1a…）也走同一套配分規則
+CASES_HW2 = [
+    ("HW2 原廠設定", {}, {"q1a": (10, 5), "q1b": (10, 5), "q5": (10, 5), "q6": (10, 5)}),
+    ("HW2 關掉 q1b 一組、q6 改 12 分",
+     {"disabled": {"q1b": [3]}, "points": {"q6": 12}},
+     {"q1a": (10, 5), "q1b": (10, 4), "q5": (10, 5), "q6": (12, 5)}),
+    ("HW2 用 HW1 的題號（q1）設定要被忽略", {"points": {"q1": 99}, "disabled": {"q1": [1]}},
+     {"q1a": (10, 5), "q1b": (10, 5), "q5": (10, 5), "q6": (10, 5)}),
+]
+
+
+def load_manifest(hw_id="hw1"):
+    return hwlib.load_manifest(hw_id)
 
 
 def py_apply(manifest, cfg):
     """用 grade_cli.apply_config 算出這份設定的結果。"""
     m = copy.deepcopy(manifest)
-    tmp = tempfile.mkdtemp(prefix="hw1_cfg_")
+    tmp = tempfile.mkdtemp(prefix="autojudge_cfg_")
     try:
         path = os.path.join(tmp, "cfg.json")
         with open(path, "w", encoding="utf-8") as fh:
@@ -114,6 +125,7 @@ def js_apply(manifest, configs):
     harness = """
 var manifest = JSON.parse(process.argv[2]);
 var configs = JSON.parse(process.argv[3]);
+var HW_ID = manifest.id || 'hw1';
 var PROBLEMS = manifest.problems;
 var QIDS = PROBLEMS.map(function (p) { return p.id; });
 var DEFAULT_TOTAL = PROBLEMS.reduce(function (s, p) { return s + p.points; }, 0);
@@ -134,7 +146,7 @@ console.log(JSON.stringify(configs.map(function (sc) {
   });
 })));
 """
-    tmp = tempfile.mkdtemp(prefix="hw1_cfgjs_")
+    tmp = tempfile.mkdtemp(prefix="autojudge_cfgjs_")
     try:
         js = os.path.join(tmp, "config.js")
         with open(js, "w", encoding="utf-8") as fh:
@@ -149,19 +161,15 @@ console.log(JSON.stringify(configs.map(function (sc) {
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def main():
-    manifest = load_manifest()
-    failures = []
-    print("=" * 72)
-    print("測資與配分設定（配分模型：題目總分固定，啟用中的測資平分）")
-    print("=" * 72)
-
+def run_cases(manifest, cases, failures):
     py_all = []
-    for name, cfg, want in CASES:
+    for name, cfg, want in cases:
         got = py_apply(manifest, cfg)
         py_all.append(got)
         bad = []
         for prob in got:
+            if prob["id"] not in want:
+                continue
             wp, wn = want[prob["id"]]
             if prob["points"] != wp or prob["tests"] != wn:
                 bad.append("%s 預期 %g 分 / %d 組，實際 %g 分 / %d 組"
@@ -175,24 +183,36 @@ def main():
                                 "%g 分" % total, name))
         for b in bad:
             failures.append("%s：%s" % (name, b))
-
-    print()
-    js_all = js_apply(manifest, [c[1] for c in CASES])
+    js_all = js_apply(manifest, [c[1] for c in cases])
     if js_all is None:
         print("  %s找不到 node，略過 app.js 的交叉比對%s" % (YELLOW, RESET))
-    else:
-        mismatch = 0
-        for (name, _cfg, _want), py, js in zip(CASES, py_all, js_all):
-            if py != js:
-                mismatch += 1
-                for a, b in zip(py, js):
-                    if a != b:
-                        failures.append("app.js 與 grade_cli.py 不一致（%s）：%s\n"
-                                        "       grade_cli.py %s\n       app.js       %s"
-                                        % (name, a["id"].upper(), a, b))
-        if not mismatch:
-            print("  %s交叉比對：app.js 與 grade_cli.py 對 %d 種設定的算法完全一致%s"
-                  % (GREEN, len(CASES), RESET))
+        return
+    mismatch = 0
+    for (name, _cfg, _want), py, js in zip(cases, py_all, js_all):
+        if py != js:
+            mismatch += 1
+            for a, b in zip(py, js):
+                if a != b:
+                    failures.append("app.js 與 grade_cli.py 不一致（%s）：%s\n"
+                                    "       grade_cli.py %s\n       app.js       %s"
+                                    % (name, a["id"].upper(), a, b))
+    if not mismatch:
+        print("  %s交叉比對：app.js 與 grade_cli.py 對 %d 種設定的算法完全一致%s"
+              % (GREEN, len(cases), RESET))
+
+
+def main():
+    failures = []
+    if "hw2" in hwlib.list_hws():
+        print("=" * 72)
+        print("HW2（子題）")
+        print("=" * 72)
+        run_cases(load_manifest("hw2"), CASES_HW2, failures)
+        print()
+    print("=" * 72)
+    print("測資與配分設定（配分模型：題目總分固定，啟用中的測資平分）")
+    print("=" * 72)
+    run_cases(load_manifest(), CASES, failures)
 
     print()
     print("=" * 72)

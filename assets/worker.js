@@ -1,4 +1,4 @@
-/* HW1 自動批改 — Python 執行 worker
+/* Autojudge — Python 執行 worker
  * 每個 worker 內含一份 Pyodide（瀏覽器裡的 CPython）。
  * 學生程式在這裡執行，input() 由測資餵入，stdout 被攔截下來比對。
  *
@@ -8,10 +8,14 @@
  *   - 學生改 builtins 或改 math 模組  -> 每跑完一筆就還原，不會污染下一位同學
  *   - 學生用 __file__ / sys.exit()    -> 都給它，行為跟真的 python 一樣
  *   - 無窮迴圈                        -> 由主執行緒 terminate() 這個 worker（TLE）
+ *
+ * 另外提供 features：用 ast 靜態分析程式寫法（有沒有迴圈、函式、set…），
+ * 給「寫法要求」提示用。只 parse、不執行。
  */
 
 let pyodide = null;
 let runner = null;
+let featurer = null;
 
 const HARNESS = String.raw`
 import builtins, io, sys, traceback, json
@@ -144,6 +148,47 @@ def _run(code, stdin_text):
         stderr_text = stderr_text[:4000] + '…'
     return json.dumps({'stdout': stdout_text, 'stderr': stderr_text,
                        'status': status, 'truncated': truncated, 'errkind': errkind})
+
+
+# --8<-- features:start（tools/grade_cli.py 用同一段程式，tools/test_detect.py 對拍）
+def _features(code):
+    """靜態分析寫法：回傳 ['for', 'while', 'comp', 'def', 'set', 'slice', 'import:x'...]。
+    語法錯誤回傳 None（沒辦法判斷，不要亂標）。"""
+    import ast
+    try:
+        tree = ast.parse(_clean_source(code))
+    except (SyntaxError, ValueError):
+        return None
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.For, ast.AsyncFor)):
+            found.add('for')
+        elif isinstance(node, ast.While):
+            found.add('while')
+        elif isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            found.add('comp')
+            if isinstance(node, ast.SetComp):
+                found.add('set')
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            found.add('def')
+        elif isinstance(node, ast.Set):
+            found.add('set')
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
+                and node.func.id in ('set', 'frozenset'):
+            found.add('set')
+        elif isinstance(node, ast.Slice):
+            found.add('slice')
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                found.add('import:' + alias.name.split('.')[0])
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            found.add('import:' + node.module.split('.')[0])
+    return sorted(found)
+# --8<-- features:end
+
+
+def _features_json(code):
+    return json.dumps(_features(code))
 `;
 
 async function boot(baseUrl) {
@@ -152,6 +197,7 @@ async function boot(baseUrl) {
   pyodide = await loadPyodide({ indexURL: baseUrl });
   pyodide.runPython(HARNESS);
   runner = pyodide.globals.get('_run');
+  featurer = pyodide.globals.get('_features_json');
 }
 
 self.onmessage = async (ev) => {
@@ -163,6 +209,12 @@ self.onmessage = async (ev) => {
     } catch (e) {
       self.postMessage({ type: 'bootfail', error: String(e && e.message ? e.message : e) });
     }
+    return;
+  }
+  if (msg.cmd === 'features') {
+    let features = null;
+    try { features = JSON.parse(featurer(msg.code)); } catch (e) { features = null; }
+    self.postMessage({ type: 'result', id: msg.id, features: features });
     return;
   }
   if (msg.cmd === 'run') {

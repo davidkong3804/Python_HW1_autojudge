@@ -1,0 +1,500 @@
+{
+ "id": "hw2",
+ "title": "HW2",
+ "subtitle": "反轉單字、質數產生器、去除重複、共同元素、二進位轉十進位、日期計算",
+ "submission": "學號_HW2.zip → 學號_HW2/q1a.py、q1b.py … q4b.py、q5.py、q6.py",
+ "grading": "Q1~Q4 各 20 分（a、b 子題各 10 分）、Q5~Q6 各 10 分，共 100 分；每個子題／每題 5 組測資、每組 2 分",
+ "problems": [
+  {
+   "id": "q1a",
+   "name": "Reverse Words in a Sentence (loop)",
+   "group": "q1",
+   "points": 10,
+   "pointsPerTest": 2.0,
+   "checks": [
+    "loop"
+   ],
+   "requirement": "要用迴圈反轉單字順序",
+   "keywords": "reverse\\s*words|反轉",
+   "tests": [
+    {
+     "n": 1,
+     "input": "Python",
+     "expected": "Python",
+     "note": "只有一個單字，原樣輸出；range(len-1, 0, -1) 或 [-1:0:-1] 會少掉第一個字而印出空白",
+     "kind": "special"
+    },
+    {
+     "n": 2,
+     "input": "Hello, World!",
+     "expected": "World! Hello,",
+     "note": "標點要跟著單字走 -> World! Hello,；整串字元反轉會得 !dlroW ,olleH",
+     "kind": "special"
+    },
+    {
+     "n": 3,
+     "input": "I love Python 3",
+     "expected": "3 Python love I",
+     "note": "大小寫與數字原樣保留 -> 3 Python love I；誤用 sorted(reverse=True) 會排成 love Python I 3",
+     "kind": "special"
+    },
+    {
+     "n": 4,
+     "input": "To be or not to be",
+     "expected": "be to not or be To",
+     "note": "有重複的單字且 To/to 大小寫不同，全部都要保留 -> be to not or be To",
+     "kind": "special"
+    },
+    {
+     "n": 5,
+     "input": "the quick brown fox jumps over the lazy dog near the river",
+     "expected": "river the near dog lazy the over jumps fox brown quick the",
+     "note": "12 個單字的長句，檢查每一個單字都有反轉到、只用單一空白分隔",
+     "kind": "special"
+    }
+   ]
+  },
+  {
+   "id": "q1b",
+   "name": "Reverse Words in a Sentence (slicing)",
+   "group": "q1",
+   "points": 10,
+   "pointsPerTest": 2.0,
+   "checks": [
+    "slice",
+    "no-loop"
+   ],
+   "requirement": "只能用 list slicing（可搭配 join），不可以用迴圈",
+   "keywords": "reverse\\s*words|反轉",
+   "tests": [
+    {
+     "n": 1,
+     "input": "Python",
+     "expected": "Python",
+     "note": "只有一個單字，原樣輸出；range(len-1, 0, -1) 或 [-1:0:-1] 會少掉第一個字而印出空白",
+     "kind": "special"
+    },
+    {
+     "n": 2,
+     "input": "Hello, World!",
+     "expected": "World! Hello,",
+     "note": "標點要跟著單字走 -> World! Hello,；整串字元反轉會得 !dlroW ,olleH",
+     "kind": "special"
+    },
+    {
+     "n": 3,
+     "input": "I love Python 3",
+     "expected": "3 Python love I",
+     "note": "大小寫與數字原樣保留 -> 3 Python love I；誤用 sorted(reverse=True) 會排成 love Python I 3",
+     "kind": "special"
+    },
+    {
+     "n": 4,
+     "input": "To be or not to be",
+     "expected": "be to not or be To",
+     "note": "有重複的單字且 To/to 大小寫不同，全部都要保留 -> be to not or be To",
+     "kind": "special"
+    },
+    {
+     "n": 5,
+     "input": "the quick brown fox jumps over the lazy dog near the river",
+     "expected": "river the near dog lazy the over jumps fox brown quick the",
+     "note": "12 個單字的長句，檢查每一個單字都有反轉到、只用單一空白分隔",
+     "kind": "special"
+    }
+   ]
+  },
+  {
+   "id": "q2a",
+   "name": "Prime Number Generator (for)",
+   "group": "q2",
+   "points": 10,
+   "pointsPerTest": 2.0,
+   "checks": [
+    "for",
+    "def"
+   ],
+   "requirement": "要用 for 迴圈，而且要定義函式",
+   "keywords": "\\bprimes?\\b|質數",
+   "tests": [
+    {
+     "n": 1,
+     "input": "1 10",
+     "expected": "2,3,5,7",
+     "note": "N1 = 1：1 不是質數；區間內有 4、9 兩個完全平方數 -> 2,3,5,7",
+     "kind": "special"
+    },
+    {
+     "n": 2,
+     "input": "13 19",
+     "expected": "13,17,19",
+     "note": "兩端點 13、19 本身都是質數，必須包含 -> 13,17,19；range(N1, N2) 會漏掉 19",
+     "kind": "special"
+    },
+    {
+     "n": 3,
+     "input": "24 28",
+     "expected": "0",
+     "note": "區間內沒有質數要輸出 0；其中 25 = 5*5，用 i*i < n 判斷會誤判為質數",
+     "kind": "special"
+    },
+    {
+     "n": 4,
+     "input": "119 127",
+     "expected": "127",
+     "note": "119 = 7*17、121 = 11*11、125 = 5^3 都不是質數，只有右端點 127 -> 127",
+     "kind": "special"
+    },
+    {
+     "n": 5,
+     "input": "180 300",
+     "expected": "181,191,193,197,199,211,223,227,229,233,239,241,251,257,263,269,271,277,281,283,293",
+     "note": "範圍較大，21 個質數，檢查逗號分隔且沒有多餘空白",
+     "kind": "special"
+    }
+   ]
+  },
+  {
+   "id": "q2b",
+   "name": "Prime Number Generator (while)",
+   "group": "q2",
+   "points": 10,
+   "pointsPerTest": 2.0,
+   "checks": [
+    "while",
+    "def"
+   ],
+   "requirement": "要用 while 迴圈，而且要定義函式",
+   "keywords": "\\bprimes?\\b|質數",
+   "tests": [
+    {
+     "n": 1,
+     "input": "1 10",
+     "expected": "2,3,5,7",
+     "note": "N1 = 1：1 不是質數；區間內有 4、9 兩個完全平方數 -> 2,3,5,7",
+     "kind": "special"
+    },
+    {
+     "n": 2,
+     "input": "13 19",
+     "expected": "13,17,19",
+     "note": "兩端點 13、19 本身都是質數，必須包含 -> 13,17,19；range(N1, N2) 會漏掉 19",
+     "kind": "special"
+    },
+    {
+     "n": 3,
+     "input": "24 28",
+     "expected": "0",
+     "note": "區間內沒有質數要輸出 0；其中 25 = 5*5，用 i*i < n 判斷會誤判為質數",
+     "kind": "special"
+    },
+    {
+     "n": 4,
+     "input": "119 127",
+     "expected": "127",
+     "note": "119 = 7*17、121 = 11*11、125 = 5^3 都不是質數，只有右端點 127 -> 127",
+     "kind": "special"
+    },
+    {
+     "n": 5,
+     "input": "180 300",
+     "expected": "181,191,193,197,199,211,223,227,229,233,239,241,251,257,263,269,271,277,281,283,293",
+     "note": "範圍較大，21 個質數，檢查逗號分隔且沒有多餘空白",
+     "kind": "special"
+    }
+   ]
+  },
+  {
+   "id": "q3a",
+   "name": "Remove Duplicates from List (loop)",
+   "group": "q3",
+   "points": 10,
+   "pointsPerTest": 2.0,
+   "checks": [
+    "loop"
+   ],
+   "requirement": "要用迴圈去除重複",
+   "keywords": "duplicate|重複",
+   "tests": [
+    {
+     "n": 1,
+     "input": "10,9,100,9",
+     "expected": "9,10,100",
+     "note": "數值排序 9,10,100；用字串排序會得 10,100,9；兩個 9 不相鄰",
+     "kind": "special"
+    },
+    {
+     "n": 2,
+     "input": "42",
+     "expected": "42",
+     "note": "只有一個元素，輸出後面不可以多逗號",
+     "kind": "special"
+    },
+    {
+     "n": 3,
+     "input": "0,0,0,0",
+     "expected": "0",
+     "note": "全部重複而且是 0，只剩一個 0",
+     "kind": "special"
+    },
+    {
+     "n": 4,
+     "input": "8,6,4,2",
+     "expected": "2,4,6,8",
+     "note": "沒有重複但順序顛倒，一定要排序 -> 2,4,6,8",
+     "kind": "special"
+    },
+    {
+     "n": 5,
+     "input": "15,3,15,40,3,7,40,1",
+     "expected": "1,3,7,15,40",
+     "note": "多組交錯重複 + 一位數與兩位數混合 -> 1,3,7,15,40；list(set()) 沒排序會錯",
+     "kind": "special"
+    }
+   ]
+  },
+  {
+   "id": "q3b",
+   "name": "Remove Duplicates from List (set)",
+   "group": "q3",
+   "points": 10,
+   "pointsPerTest": 2.0,
+   "checks": [
+    "set"
+   ],
+   "requirement": "要用 set 去除重複",
+   "keywords": "duplicate|重複",
+   "tests": [
+    {
+     "n": 1,
+     "input": "10,9,100,9",
+     "expected": "9,10,100",
+     "note": "數值排序 9,10,100；用字串排序會得 10,100,9；兩個 9 不相鄰",
+     "kind": "special"
+    },
+    {
+     "n": 2,
+     "input": "42",
+     "expected": "42",
+     "note": "只有一個元素，輸出後面不可以多逗號",
+     "kind": "special"
+    },
+    {
+     "n": 3,
+     "input": "0,0,0,0",
+     "expected": "0",
+     "note": "全部重複而且是 0，只剩一個 0",
+     "kind": "special"
+    },
+    {
+     "n": 4,
+     "input": "8,6,4,2",
+     "expected": "2,4,6,8",
+     "note": "沒有重複但順序顛倒，一定要排序 -> 2,4,6,8",
+     "kind": "special"
+    },
+    {
+     "n": 5,
+     "input": "15,3,15,40,3,7,40,1",
+     "expected": "1,3,7,15,40",
+     "note": "多組交錯重複 + 一位數與兩位數混合 -> 1,3,7,15,40；list(set()) 沒排序會錯",
+     "kind": "special"
+    }
+   ]
+  },
+  {
+   "id": "q4a",
+   "name": "Finding Common Elements in Lists (loop)",
+   "group": "q4",
+   "points": 10,
+   "pointsPerTest": 2.0,
+   "checks": [
+    "loop"
+   ],
+   "requirement": "要用迴圈找共同元素",
+   "keywords": "common\\s*elements?|共同",
+   "tests": [
+    {
+     "n": 1,
+     "input": "b,A,3,z,Z\nZ,z,3,b,Q",
+     "expected": "3,Z,b,z",
+     "note": "數字/大寫/小寫混合，Z 與 z 都是共同元素 -> 3,Z,b,z；照第一行順序輸出會錯",
+     "kind": "special"
+    },
+    {
+     "n": 2,
+     "input": "a,B,c\nA,b,C",
+     "expected": "N/A",
+     "note": "只差在大小寫，不算相同 -> N/A；轉小寫再比會得 a,b,c",
+     "kind": "special"
+    },
+    {
+     "n": 3,
+     "input": "9,8,7,6\n6,7,8,9",
+     "expected": "6,7,8,9",
+     "note": "兩行元素相同但順序相反，輸出要排序 -> 6,7,8,9",
+     "kind": "special"
+    },
+    {
+     "n": 4,
+     "input": "k\np,q,k",
+     "expected": "k",
+     "note": "第一行只有一個元素、只有一個共同元素 -> k",
+     "kind": "special"
+    },
+    {
+     "n": 5,
+     "input": "0,A,a,9,Z,z\nz,Z,9,a,A,0",
+     "expected": "0,9,A,Z,a,z",
+     "note": "六個邊界字元全部共同 -> 0,9,A,Z,a,z；不分大小寫排序會得 0,9,A,a,Z,z",
+     "kind": "special"
+    }
+   ]
+  },
+  {
+   "id": "q4b",
+   "name": "Finding Common Elements in Lists (function)",
+   "group": "q4",
+   "points": 10,
+   "pointsPerTest": 2.0,
+   "checks": [
+    "def"
+   ],
+   "requirement": "要定義一個函式做比較",
+   "keywords": "common\\s*elements?|共同",
+   "tests": [
+    {
+     "n": 1,
+     "input": "b,A,3,z,Z\nZ,z,3,b,Q",
+     "expected": "3,Z,b,z",
+     "note": "數字/大寫/小寫混合，Z 與 z 都是共同元素 -> 3,Z,b,z；照第一行順序輸出會錯",
+     "kind": "special"
+    },
+    {
+     "n": 2,
+     "input": "a,B,c\nA,b,C",
+     "expected": "N/A",
+     "note": "只差在大小寫，不算相同 -> N/A；轉小寫再比會得 a,b,c",
+     "kind": "special"
+    },
+    {
+     "n": 3,
+     "input": "9,8,7,6\n6,7,8,9",
+     "expected": "6,7,8,9",
+     "note": "兩行元素相同但順序相反，輸出要排序 -> 6,7,8,9",
+     "kind": "special"
+    },
+    {
+     "n": 4,
+     "input": "k\np,q,k",
+     "expected": "k",
+     "note": "第一行只有一個元素、只有一個共同元素 -> k",
+     "kind": "special"
+    },
+    {
+     "n": 5,
+     "input": "0,A,a,9,Z,z\nz,Z,9,a,A,0",
+     "expected": "0,9,A,Z,a,z",
+     "note": "六個邊界字元全部共同 -> 0,9,A,Z,a,z；不分大小寫排序會得 0,9,A,a,Z,z",
+     "kind": "special"
+    }
+   ]
+  },
+  {
+   "id": "q5",
+   "name": "Convert Binary to Decimal",
+   "group": "q5",
+   "points": 10,
+   "pointsPerTest": 2.0,
+   "checks": [],
+   "requirement": "",
+   "keywords": "binary|decimal|二進位",
+   "tests": [
+    {
+     "n": 1,
+     "input": "1",
+     "expected": "1",
+     "note": "最小的正數，只有一位 -> 1",
+     "kind": "special"
+    },
+    {
+     "n": 2,
+     "input": "0001101",
+     "expected": "13",
+     "note": "開頭有 0，不影響數值 -> 13；位元順序算反會得 88",
+     "kind": "special"
+    },
+    {
+     "n": 3,
+     "input": "10000000",
+     "expected": "128",
+     "note": "剛好 8 位元的 2 的次方 -> 128；位元順序算反會得 1",
+     "kind": "special"
+    },
+    {
+     "n": 4,
+     "input": "1100101011111110101011011011111011101111",
+     "expected": "871856193263",
+     "note": "40 位元、超過 32 位元範圍，而且不是迴文（位元順序算反會得到不同的數）",
+     "kind": "special"
+    },
+    {
+     "n": 5,
+     "input": "1111111111111111111111111111111111111111111111111111111111111111",
+     "expected": "18446744073709551615",
+     "note": "64 個 1 = 2^64 - 1；用 math.pow / 浮點數累加會失去精度變成 ...616",
+     "kind": "special"
+    }
+   ]
+  },
+  {
+   "id": "q6",
+   "name": "Date Calculation",
+   "group": "q6",
+   "points": 10,
+   "pointsPerTest": 2.0,
+   "checks": [
+    "import:datetime"
+   ],
+   "requirement": "要使用 datetime 模組",
+   "keywords": "datetime|date\\s*calculation|日期",
+   "tests": [
+    {
+     "n": 1,
+     "input": "2000-02-29,2000-03-01",
+     "expected": "1",
+     "note": "2000 年是閏年（被 400 整除），2/29 合法 -> 1；以為二月最多 28 天會錯",
+     "kind": "special"
+    },
+    {
+     "n": 2,
+     "input": "2023-02-29,2023-03-01",
+     "expected": "Invalid",
+     "note": "2023 年不是閏年，2/29 不存在 -> Invalid",
+     "kind": "special"
+    },
+    {
+     "n": 3,
+     "input": "2026-3-5,2025-12-25",
+     "expected": "70",
+     "note": "月、日是個位數要自動補 0，而且前面的日期比較晚要取絕對值 -> 70",
+     "kind": "special"
+    },
+    {
+     "n": 4,
+     "input": "2024-06-15,2024-06-15",
+     "expected": "0",
+     "note": "同一天相差 0 天（不是 1）",
+     "kind": "special"
+    },
+    {
+     "n": 5,
+     "input": "15-08-2024,2024-08-15",
+     "expected": "Invalid",
+     "note": "第一個日期是 DD-MM-YYYY 格式錯誤 -> Invalid",
+     "kind": "special"
+    }
+   ]
+  }
+ ]
+}

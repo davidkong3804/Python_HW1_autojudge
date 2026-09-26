@@ -1,34 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-HW1 測資驗證器
----------------
-四道防線，全部通過才算測資可用：
+測資驗證器（所有作業共用）
+--------------------------
+五道防線，全部通過才算測資可用：
 
-  1. 參考解答 solutions/qN.py 跑過全部測資          -> 必須 100 分
-  2. 另一位「助教」寫的獨立實作 tools/ref_alt/qN.py -> 必須 100 分
-  3. 用純數學（Fraction / Decimal，不重用任何一份解答的程式碼）重算答案
+  1. 參考解答 hw/<id>/solutions/<題號>.py 跑過全部測資 -> 必須滿分
+  2. 另一位「助教」寫的獨立實作 hw/<id>/ref_alt/       -> 必須滿分
+  3. 用 spec.py 的 INDEPENDENT（不重用任何一份解答的程式碼）重算答案
   4. mutation testing：mutants/ 裡每一支故意寫錯的程式，
      都必須至少被一組測資抓到（有漏洞的程式不能拿滿分）
   5. 隨機對拍：大量隨機輸入下，兩份實作的輸出必須完全一致
 
-執行：python3 tools/verify_tests.py
+執行：python3 tools/verify_tests.py [--hw hw2]
 """
 
-import json
+import argparse
 import os
 import random
 import subprocess
 import sys
-from decimal import Decimal, ROUND_HALF_UP, getcontext
-from fractions import Fraction
 
-getcontext().prec = 60
-
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SOL = os.path.join(ROOT, "solutions")
-ALT = os.path.join(ROOT, "tools", "ref_alt")
-MUT = os.path.join(ROOT, "mutants")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import hwlib  # noqa: E402
 
 RED, GREEN, YELLOW, RESET = "\033[31m", "\033[32m", "\033[33m", "\033[0m"
 failures = []
@@ -47,127 +41,23 @@ def run(path, stdin_text, timeout=20):
     return proc.stdout.rstrip("\n").rstrip(), ""
 
 
-def load_manifest():
-    with open(os.path.join(ROOT, "data", "tests.json"), encoding="utf-8") as fh:
-        return json.load(fh)
-
-
-# ---------------------------------------------------------------------------
-# 第三道防線：純數學重算（完全不看任何一份 Python 解答）
-# ---------------------------------------------------------------------------
-def fmt(value, digits):
-    """把精確有理數/Decimal 以四捨五入格式成固定小數位。"""
-    if isinstance(value, Fraction):
-        value = Decimal(value.numerator) / Decimal(value.denominator)
-    q = Decimal(1).scaleb(-digits)
-    return str(value.quantize(q, rounding=ROUND_HALF_UP))
-
-
-def independent_q1(line):
-    h, w = line.split()
-    return fmt(Fraction(w) / (Fraction(h) * Fraction(h)), 2)
-
-
-def independent_q2(line):
-    op, x, y = line.split(",")
-    x, y = Fraction(x), Fraction(y)
-    if op == "/":
-        if y == 0:
-            return "Error"
-        return fmt(x / y, 2)
-    return fmt({"+": x + y, "-": x - y, "*": x * y}[op], 2)
-
-
-def independent_q3(line):
-    n = int(line)
-    prime = n >= 2
-    for i in range(2, n):            # 最笨但最不會錯的試除法
-        if i * i > n:
-            break
-        if n % i == 0:
-            prime = False
-            break
-    return ("Prime" if prime else "Not Prime") + ("," + ("Even" if n % 2 == 0 else "Odd"))
-
-
-def independent_q4(line):
-    total = 0
-    for ch in line:
-        code = ord(ch)
-        if 48 <= code <= 57:
-            total += code - 48
-    return "%d,%d" % (total, len(line))
-
-
-def independent_q5(line):
-    n = len(line)
-    if n < 6:
-        return "Weak"
-    if n < 11:
-        return "Moderate"
-    return "Strong"
-
-
-def independent_q6(line):
-    a, b, c = [Decimal(t) for t in line.split()]
-    s = (b * b - 4 * a * c).sqrt()
-    r1 = (-b + s) / (2 * a)
-    r2 = (-b - s) / (2 * a)
-    hi, lo = (r1, r2) if r1 >= r2 else (r2, r1)
-    return fmt(hi, 3) + " " + fmt(lo, 3)
-
-
-INDEPENDENT = {
-    "q1": independent_q1, "q2": independent_q2, "q3": independent_q3,
-    "q4": independent_q4, "q5": independent_q5, "q6": independent_q6,
-}
-
-
-# ---------------------------------------------------------------------------
-# 第五道防線：隨機對拍
-# ---------------------------------------------------------------------------
-def random_inputs(qid, rng, n=300):
-    out = []
-    for _ in range(n):
-        if qid == "q1":
-            out.append("%s %s" % (rng.randint(30, 250) / 100.0, rng.randint(10, 3000) / 10.0))
-        elif qid == "q2":
-            op = "+-*/"[rng.randrange(4)]
-            x = rng.randint(-50000, 50000) / 100.0
-            y = rng.randint(-50000, 50000) / 100.0
-            if rng.random() < 0.1:
-                y = 0 if rng.random() < 0.5 else 0.0
-            out.append("%s,%s,%s" % (op, x, y))
-        elif qid == "q3":
-            out.append(str(rng.randint(1, 5000)))
-        elif qid == "q4":
-            pool = "abcXYZ0123456789"
-            out.append("".join(pool[rng.randrange(len(pool))] for _ in range(rng.randint(1, 40))))
-        elif qid == "q5":
-            pool = "abcXYZ0123456789 !@#"
-            out.append("".join(pool[rng.randrange(len(pool))] for _ in range(rng.randint(1, 20))).strip() or "x")
-        elif qid == "q6":
-            while True:
-                a = rng.randint(-40, 40) / 10.0
-                b = rng.randint(-200, 200) / 10.0
-                c = rng.randint(-200, 200) / 10.0
-                if a != 0 and b * b - 4 * a * c >= 0:
-                    break
-            out.append("%s %s %s" % (a, b, c))
-    return out
-
-
-def main():
-    manifest = load_manifest()
+def verify_hw(hw_id):
+    manifest = hwlib.load_manifest(hw_id)
+    spec = hwlib.load_spec(hw_id)
+    SOL = hwlib.hw_path(hw_id, "solutions")
+    ALT = hwlib.hw_path(hw_id, "ref_alt")
+    MUT = hwlib.hw_path(hw_id, "mutants")
+    INDEPENDENT = getattr(spec, "INDEPENDENT", {})
+    random_inputs = getattr(spec, "random_inputs", None)
     rng = random.Random(1234567)
     print("=" * 72)
-    print("HW1 測資驗證")
+    print("%s 測資驗證" % manifest["title"])
     print("=" * 72)
 
     for prob in manifest["problems"]:
         qid = prob["id"]
         tests = prob["tests"]
-        print("\n[%s] %s  (%d 分 / %d 組測資)" % (qid, prob["name"], prob["points"], len(tests)))
+        print("\n[%s] %s  (%g 分 / %d 組測資)" % (qid, prob["name"], prob["points"], len(tests)))
 
         # --- 1 & 2：兩份實作 ---
         for label, folder in (("參考解答", SOL), ("獨立實作", ALT)):
@@ -179,21 +69,27 @@ def main():
             status = "%s全部通過%s" % (GREEN, RESET) if not bad else "%s不通過 %s%s" % (RED, bad, RESET)
             print("   1) %s：%s" % (label, status))
             if bad:
-                failures.append("%s %s 未通過：%s" % (qid, label, bad))
+                failures.append("%s %s %s 未通過：%s" % (hw_id, qid, label, bad))
 
         # --- 3：純數學重算 ---
         bad = []
-        for t in tests:
+        if qid not in INDEPENDENT:
+            failures.append("%s %s 沒有提供 INDEPENDENT 純數學重算" % (hw_id, qid))
+        for t in (tests if qid in INDEPENDENT else []):
             calc = INDEPENDENT[qid](t["input"])
             if calc != t["expected"]:
                 bad.append((t["n"], t["input"], calc, t["expected"]))
         print("   2) 純數學重算：%s" % ("%s一致%s" % (GREEN, RESET) if not bad
                                         else "%s不一致 %s%s" % (RED, bad, RESET)))
         if bad:
-            failures.append("%s 數學重算不一致：%s" % (qid, bad))
+            failures.append("%s %s 數學重算不一致：%s" % (hw_id, qid, bad))
 
         # --- 4：mutation testing ---
-        mutants = sorted(f for f in os.listdir(MUT) if f.startswith(qid + "_"))
+        mutants = sorted(f for f in os.listdir(MUT) if f.startswith(qid + "_")) \
+            if os.path.isdir(MUT) else []
+        if not mutants:
+            failures.append("%s %s 沒有任何漏洞程式（mutants/%s_*.py），無法確認測資有鑑別度"
+                            % (hw_id, qid, qid))
         for m in mutants:
             caught, first = 0, None
             for t in tests:
@@ -208,11 +104,11 @@ def main():
                   % (m, caught, len(tests), first, score,
                      GREEN + "OK" + RESET if ok else RED + "沒抓到！" + RESET))
             if not ok:
-                failures.append("%s 的漏洞程式 %s 竟然拿到滿分" % (qid, m))
+                failures.append("%s %s 的漏洞程式 %s 竟然拿到滿分" % (hw_id, qid, m))
 
         # --- 5：隨機對拍 ---
         mism = []
-        for line in random_inputs(qid, rng):
+        for line in (random_inputs(qid, rng) if random_inputs else []):
             a, ea = run(os.path.join(SOL, qid + ".py"), line + "\n")
             b, eb = run(os.path.join(ALT, qid + ".py"), line + "\n")
             if (a, ea) != (b, eb):
@@ -222,9 +118,18 @@ def main():
         print("   4) 隨機對拍 300 筆：%s" % ("%s兩份實作完全一致%s" % (GREEN, RESET) if not mism
                                             else "%s有差異 %s%s" % (YELLOW, mism, RESET)))
         if mism:
-            failures.append("%s 隨機對拍有差異：%s" % (qid, mism))
+            failures.append("%s %s 隨機對拍有差異：%s" % (hw_id, qid, mism))
 
-    print("\n" + "=" * 72)
+
+def main():
+    ap = argparse.ArgumentParser(description="驗證測資")
+    ap.add_argument("--hw", default="all", help="hw1 / hw2 / all（預設全部）")
+    args = ap.parse_args()
+    for hw_id in hwlib.resolve_hws(args.hw):
+        verify_hw(hw_id)
+        print()
+
+    print("=" * 72)
     if failures:
         print(RED + "驗證失敗：" + RESET)
         for f in failures:
