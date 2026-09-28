@@ -201,6 +201,24 @@ def run_cases(manifest, cases, failures):
               % (GREEN, len(cases), RESET))
 
 
+def check_hw_mismatch(failures):
+    """HW1 的設定檔拿去批 HW2 要被擋下來，不能默默套用。"""
+    m = load_manifest("hw2")
+    tmp = tempfile.mkdtemp(prefix="autojudge_cfg_")
+    try:
+        path = os.path.join(tmp, "cfg.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump({"hw": "hw1", "points": {"q5": 20}}, fh)
+        try:
+            grade_cli.apply_config(copy.deepcopy(m), path)
+            failures.append("HW1 的設定檔套到 HW2 沒有被擋下來")
+            print("  %sFAIL%s HW1 的設定檔套到 HW2 要被擋下來" % (RED, RESET))
+        except SystemExit:
+            print("  %sOK  %s HW1 的設定檔套到 HW2 會被擋下來" % (GREEN, RESET))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main():
     failures = []
     if "hw2" in hwlib.list_hws():
@@ -208,6 +226,7 @@ def main():
         print("HW2（子題）")
         print("=" * 72)
         run_cases(load_manifest("hw2"), CASES_HW2, failures)
+        check_hw_mismatch(failures)
         print()
     print("=" * 72)
     print("測資與配分設定（配分模型：題目總分固定，啟用中的測資平分）")

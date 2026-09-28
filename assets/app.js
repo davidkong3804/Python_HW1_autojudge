@@ -102,7 +102,7 @@
       var self = this;
       if (self.booting) return self.booting;
       self.booting = new Promise(function (resolve, reject) {
-        var w = new Worker('assets/worker.js?v=2.3');
+        var w = new Worker('assets/worker.js?v=2.4');
         self.worker = w;
         w.onmessage = function (ev) {
           var m = ev.data;
@@ -329,27 +329,32 @@
 
   /* 題號：q3、Q3、q1a、q1_a、Q1(a)、第3題、第1題a、hw2_3b… qids 是目前作業的題號清單 */
   function detectQid(name, qids) {
-    var m = name.match(/(?:^|[^a-z0-9])q\s*(\d{1,2})(?:\s*[-_.]?\s*\(?\s*([a-z])\s*\)?(?![a-z0-9]))?(?![0-9])/i);
+    var m = name.match(/(?:^|[^a-z0-9])q[ \t\u3000]*(\d{1,2})(?:[ \t\u3000]*[-_.]?[ \t\u3000]*\(?[ \t\u3000]*([a-z])[ \t\u3000]*\)?(?![a-z0-9]))?(?![0-9])/i);
     if (m) {
       var q = qidFromParts(m[1], m[2], qids);
       if (q) return q;
     }
-    m = name.match(/第\s*(\d{1,2})\s*題(?:\s*[-_.]?\s*\(?\s*([a-z])\s*\)?(?![a-z0-9]))?/i);
+    m = name.match(/第[ \t\u3000]*(\d{1,2})[ \t\u3000]*題(?:[ \t\u3000]*[-_.]?[ \t\u3000]*\(?[ \t\u3000]*([a-z])[ \t\u3000]*\)?(?![a-z0-9]))?/i);
     if (m) {
       q = qidFromParts(m[1], m[2], qids);
       if (q) return q;
     }
     // 先把學號和「HW1」這種作業編號拿掉再找數字：不然路徑裡的 _HW1 會讓
     // 任何認不出題號的檔案都被判成 Q1，默默掛到第一題去
-    var stripped = name.replace(/HW\s*\d+/ig, '_').replace(/[A-Za-z]?\d{6,12}/g, '_');
+    // 只剩一個可能的題號才採用：「3 (1).py」「ex3_ver2.py」這種有兩個數字的，猜錯會默默掛到別題，
+    // 寧可留空讓助教指定或用自動配對
+    var stripped = name.replace(/HW[ \t\u3000]*\d+/ig, '_').replace(/[A-Za-z]?\d{6,12}/g, '_');
     var re = /(?:^|[^0-9])(\d{1,2})(?:[-_.]?\(?([a-z])\)?(?![a-z0-9]))?(?![0-9])/ig;
-    var last = '';
+    var found = '';
     while ((m = re.exec(stripped)) !== null) {
-      q = qidFromParts(m[1], m[2], qids);
-      if (q) last = q;
+      if (parseInt(m[1], 10) !== 0) {
+        q = qidFromParts(m[1], m[2], qids) || ('?' + m[1] + (m[2] || ''));
+        if (found && found !== q) return '';
+        found = q;
+      }
       re.lastIndex = m.index + 1;
     }
-    return last;
+    return found.charAt(0) === '?' ? '' : found;
   }
 
   /* 學號_HW1/q1.py、COOL 的 wang_123_456_B11901234_HW1.zip/... 都能抓到 */
@@ -545,7 +550,7 @@
   function persist() {
     SESSIONS[S.hw] = S;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(flushSave, 400);
+    saveTimer = setTimeout(flushSave, 250);
   }
 
   function flushSave() {
@@ -768,9 +773,13 @@
     });
   }
 
+  var INTAKING = 0;          // 還在解壓 / 讀檔的批次數：這段時間不能切換作業，不然檔案會進到另一份作業
+
   function intakeFiles(fileList) {
+    if (RUN) { toast('批改進行中不能加檔案（會跟正在跑的這一輪對不上），請等批完或按取消。', 'warn', 6000); return Promise.resolve(); }
     var files = Array.prototype.slice.call(fileList);
     var before = S.submissions.length;
+    INTAKING++;
     var jobs = files.map(function (f) {
       var path = f.webkitRelativePath || f.name;
       if (/\.zip$/i.test(f.name)) {
@@ -780,6 +789,7 @@
       return readFileText(f).then(function (txt) { ingest(path, txt); });
     });
     return Promise.all(jobs).then(function () {
+      INTAKING--;
       var added = S.submissions.slice(before);
       if (!added.length) {
         toast('沒有找到任何 .py / .ipynb 檔。', 'warn');
@@ -864,6 +874,7 @@
   }
 
   function moveToHw(target, keys) {
+    if (RUN || INTAKING) { toast('批改或載入檔案進行中，等一下再搬。', 'warn'); return; }
     var moving = S.submissions.filter(function (s) { return keys.indexOf(s.key) >= 0; });
     S.submissions = S.submissions.filter(function (s) { return keys.indexOf(s.key) < 0; });
     moving.forEach(function (s) { markDirty(s.student); });
@@ -1047,6 +1058,11 @@
           if (/^[a-z]\d/i.test(v)) v = v.toUpperCase();
           markDirty(g.student);
           g.files.forEach(function (sub) { sub.student = v; });
+          // 手動調整跟著學號走，不然改完學號，調整就默默不見了
+          if (S.adjust[g.student] && !S.adjust[v]) {
+            S.adjust[v] = S.adjust[g.student];
+            delete S.adjust[g.student];
+          }
           markDirty(v);
           expanded[v] = true;
           delete expanded[g.student];
@@ -1127,6 +1143,7 @@
     if (nNotRoster) msgs.push(nNotRoster + ' 個學號不在修課名單上，可能是學號辨識錯了。');
     $('fileWarn').textContent = msgs.join(' ');
     $('fileWarn').hidden = !msgs.length;
+    applyLock();
   }
 
   /* ------------------------------------------------------------------ */
@@ -1138,7 +1155,7 @@
       .replace(/\r\n?/g, '\n').split('\n')
       .map(function (l) { return l.replace(/[ \t]+$/, ''); });
     while (lines.length && lines[lines.length - 1] === '') lines.pop();
-    if (mode === 'trim') lines = lines.map(function (l) { return l.trim(); });
+    if (mode === 'trim') lines = lines.map(function (l) { return l.replace(/^[ \t\u3000]+|[ \t\u3000]+$/g, ''); });
     if (mode === 'loose') return lines.join('\n').replace(/\s+/g, '').toLowerCase();
     return lines.join('\n');
   }
@@ -1149,10 +1166,12 @@
    * 判定刻意保守，只接受看起來像「標籤」的多餘文字：
    *   - 答案前面只能是空的，或以 : = ： is 是 為 等於 結尾（BMI = 55.56、答案是 Weak）
    *   - 答案後面只能是標點或空白（55.56。）
-   *   - 答案以外多印的整行不可以有數字（有數字的多半是另一個答案或除錯輸出）
-   * 否則 Not Prime,Odd 會被當成 Prime,Odd 的格式問題，把錯的答案算成對的。 */
+   *   - 答案前面的標籤不可以有數字（10 = 5 不算印出 5）
+   *   - 答案以外多印的整行只能是提示字（以 : ： ? ？ 結尾，例如「請輸入身高：」）
+   * 否則 Not Prime,Odd 會被當成 Prime,Odd，一次印出 Weak / Moderate / Strong 三行也會被當成答對。 */
   var ANS_LABEL_END = /(?:[:=：]|(?:^|[^A-Za-z])is|是|為|为|等於|等于)[ \t\u3000]*$/i;
   var ANS_TAIL_OK = /^[ \t\u3000.。!！,，;；)）]*$/;
+  var ANS_PROMPT_LINE = /^[^0-9]*[:：?？][ \t\u3000]*$/;
 
   function lineHasAnswer(line, want) {
     if (line === want) return true;
@@ -1160,7 +1179,7 @@
     var k = line.indexOf(want);
     while (k >= 0) {
       var pre = line.slice(0, k), post = line.slice(k + want.length);
-      if ((pre === '' || ANS_LABEL_END.test(pre)) && ANS_TAIL_OK.test(post)) return true;
+      if ((pre === '' || (ANS_LABEL_END.test(pre) && !/[0-9]/.test(pre))) && ANS_TAIL_OK.test(post)) return true;
       k = line.indexOf(want, k + 1);
     }
     return false;
@@ -1175,7 +1194,7 @@
     var i = 0;
     for (var j = 0; j < got.length; j++) {
       if (i < want.length && lineHasAnswer(got[j], want[i])) { i++; continue; }
-      if (/[0-9]/.test(got[j])) return false;
+      if (got[j] !== '' && !ANS_PROMPT_LINE.test(got[j])) return false;
     }
     return i === want.length;
   }
@@ -1455,6 +1474,9 @@
     var s = settings();
     return stableStringify({
       hw: HW_ID, cfg: CFG, mode: s.mode, t: s.timeout,
+      tests: activeProblems().map(function (p) {
+        return [p.id, p.points, p.tests.map(function (t) { return [t.input, t.expected]; })];
+      }),
       re: s.lenientRe, alt: s.lenientInput, pe: s.formatCredit
     });
   }
@@ -1470,6 +1492,17 @@
 
   var RUN = null;             // 進行中的一輪：{ cancel: bool }
 
+  /* 批改中鎖住檔案清單：批到一半改題號、改學號、加檔案，結果會跟這一輪對不上 */
+  function applyLock() {
+    var on = !!RUN;
+    $('filesCard').classList.toggle('locked', on);
+    Array.prototype.forEach.call(
+      document.querySelectorAll('#subsList input, #subsList select, #subsList .btn, #pickFiles, #pickDir, #loadDemo, #clearFiles, #autoMatch, #hwMismatch button'),
+      function (n) { n.disabled = on; });
+    $('drop').classList.toggle('locked', on);
+    $('lockNote').hidden = !on;
+  }
+
   function busy(on) {
     var has = S.submissions.length > 0;
     $('runAll').disabled = on || !has;
@@ -1483,6 +1516,7 @@
     Array.prototype.forEach.call(document.querySelectorAll('#hwTabs button'), function (b) {
       b.disabled = on && b.getAttribute('aria-selected') !== 'true';
     });
+    applyLock();
   }
 
   function fmtEta(ms) {
@@ -1493,6 +1527,10 @@
 
   /* 批改一批檔案。回傳 { out: 學號->題號->紀錄, done: 完整批完的學號, cancelled } */
   function gradeList(list, label) {
+    // 這一輪要批的檔案先複製一份固定下來：學號、題號、程式碼都以開跑那一刻為準
+    list = list.map(function (s) {
+      return { key: s.key, path: s.path, student: s.student, qid: s.qid, code: s.code };
+    });
     var cfg = settings();
     ensureEngine().catch(function () {});
     // 整輪固定用同一份設定快照：批到一半有人改設定，不該讓前後幾位同學用不同的尺
@@ -1794,12 +1832,16 @@
     var ids = {};
     Object.keys(S.results || {}).forEach(function (id) { ids[id] = true; });
     ROSTER.forEach(function (r) { ids[r.id] = true; });
+    // 有交檔案、卻沒有任何成績（例如題號全部沒指定）：一定要列出來，不然匯出時會變成「沒交」
+    var hasFiles = {};
+    S.submissions.forEach(function (s) { hasFiles[s.student] = true; ids[s.student] = true; });
     return Object.keys(ids).map(function (id) {
       var recs = (S.results && S.results[id]) || null;
       var row = {
         id: id, name: names[id] || '', recs: recs || {}, submitted: !!recs,
         inRoster: !!roster[id], cells: {}, total: 0, adjTotal: 0, flags: [],
-        adjusted: false, conflict: false, dirty: !!S.dirty[id], pe: 0
+        adjusted: false, conflict: false, dirty: !!S.dirty[id], pe: 0,
+        pending: !recs && !!hasFiles[id]
       };
       ACTIVE.forEach(function (p) {
         var rec = row.recs[p.id];
@@ -1829,7 +1871,7 @@
       case 'adjusted': return row.adjusted;
       case 'missing': return !row.submitted;
       case 'notroster': return ROSTER.length > 0 && !row.inRoster;
-      case 'dirty': return row.dirty;
+      case 'dirty': return row.dirty || row.pending;
       case 'format': return row.pe > 0;
       default: return true;
     }
@@ -1992,7 +2034,11 @@
       });
       tr.appendChild(el('td', 'total num', row.submitted ? String(row.total) : '0'));
       var note = el('td', 'notes');
-      if (!row.submitted) note.appendChild(el('span', 'badge bad', '未繳交'));
+      if (row.pending) {
+        var pd = el('span', 'badge bad', '有檔案、沒批到');
+        pd.title = '這位學生有交檔案，但沒有任何一個檔案被批改（多半是題號沒指定）。回步驟 2 指定題號後重批';
+        note.appendChild(pd);
+      } else if (!row.submitted) note.appendChild(el('span', 'badge bad', '未繳交'));
       if (ROSTER.length && !row.inRoster) note.appendChild(el('span', 'badge warn', '不在名單'));
       if (row.dirty) note.appendChild(el('span', 'badge warn', '需重批'));
       if (row.flags.length) {
@@ -2413,6 +2459,8 @@
     if (S.runSig && S.runSig !== currentSig()) msgs.push('批改設定在批改後改過了');
     var nd = Object.keys(S.dirty).length;
     if (nd) msgs.push(nd + ' 位學生的檔案在批改後有變動或還沒批完');
+    var np = scoreRows().filter(function (r) { return r.pending; }).length;
+    if (np) msgs.push(np + ' 位學生有交檔案但一個都沒批到（多半是題號沒指定），匯出會是 0 分');
     return msgs;
   }
 
@@ -2455,7 +2503,8 @@
         line.push(rec ? rec.passed + '/' + rec.cases.length : '未繳交');
       });
       var status = [];
-      if (!r.submitted) status.push('未繳交');
+      if (r.pending) status.push('有檔案但沒批到（題號未指定）');
+      else if (!r.submitted) status.push('未繳交');
       if (ROSTER.length && !r.inRoster) status.push('不在名單');
       if (r.conflict) status.push('有重複檔案');
       if (r.dirty) status.push('需重批');
@@ -2929,6 +2978,7 @@
 
   function switchHw(id) {
     if (RUN) { toast('批改進行中，完成或取消後才能切換作業。', 'warn'); return Promise.resolve(); }
+    if (INTAKING) { toast('檔案還在載入，等一下再切換作業。', 'warn'); return Promise.resolve(); }
     if (!assignmentOf(id)) return Promise.resolve();
     SESSIONS[S.hw] = S;
     var save = saveTimer ? flushSave() : Promise.resolve();
@@ -3002,6 +3052,7 @@
     });
 
     $('clearFiles').onclick = function () {
+      if (RUN) return;
       var msg = S.results
         ? '清空 ' + HW.title + ' 的所有檔案、成績與手動調整？這個動作無法復原（建議先匯出成績）。'
         : '清空 ' + HW.title + ' 的所有檔案？';
@@ -3024,6 +3075,7 @@
     $('autoMatch').onclick = autoMatch;
 
     $('loadDemo').onclick = function () {
+      if (RUN) return;
       if (S.submissions.length &&
           !confirm('示範檔會加進目前 ' + HW.title + ' 的繳交清單裡（學號是「參考解答」「漏洞範例-…」）。要繼續嗎？')) return;
       ensureEngine().catch(function () {});
@@ -3195,6 +3247,18 @@
       var id = location.hash.replace(/^#/, '').toLowerCase();
       if (assignmentOf(id) && id !== HW_ID) switchHw(id);
     });
+    /* 同一個網頁開兩個分頁，兩邊各自自動儲存會互相蓋掉進度：偵測到就提醒 */
+    try {
+      var tabs = new BroadcastChannel('autojudge');
+      var warnTabs = function () {
+        toast('這個批改網頁在另一個分頁（或視窗）也開著。兩邊同時改會互相覆蓋進度，請只留一個分頁。', 'bad', 15000);
+      };
+      tabs.onmessage = function (e) {
+        if (e.data === 'hello') { tabs.postMessage('here'); warnTabs(); }
+        else if (e.data === 'here') warnTabs();
+      };
+      tabs.postMessage('hello');
+    } catch (e) { /* 舊瀏覽器沒有 BroadcastChannel */ }
     window.addEventListener('beforeunload', function (e) {
       if (saveTimer) flushSave();
       if (RUN) { e.preventDefault(); e.returnValue = ''; }

@@ -68,8 +68,14 @@ def apply_config(manifest, path):
     """
     with open(path, encoding="utf-8") as fh:
         cfg = json.load(fh)
+    # 設定檔會記得是哪一份作業的：HW1 的配分和自訂測資套到 HW2 會默默算錯
+    cfg_hw = cfg.get("hw") if isinstance(cfg, dict) else None
     if isinstance(cfg, dict) and isinstance(cfg.get("config"), dict):
         cfg = cfg["config"]
+        cfg_hw = cfg_hw or cfg.get("hw")
+    if cfg_hw and manifest.get("id") and cfg_hw != manifest["id"]:
+        raise SystemExit("設定檔 %s 是 %s 的，這次批改的是 %s。請用對的設定檔，或確認 --hw 沒填錯。"
+                         % (path, cfg_hw.upper(), manifest["id"].upper()))
     if not isinstance(cfg, dict):
         raise SystemExit("設定檔格式不對：最外層應該是一個物件")
 
@@ -122,7 +128,7 @@ def normalize(text, mode="strict"):
     while lines and lines[-1] == "":
         lines.pop()
     if mode == "trim":
-        lines = [l.strip() for l in lines]
+        lines = [re.sub(r"^[ \t\u3000]+|[ \t\u3000]+$", "", l) for l in lines]
     if mode == "loose":
         return re.sub(r"\s+", "", "\n".join(lines)).lower()
     return "\n".join(lines)
@@ -130,9 +136,11 @@ def normalize(text, mode="strict"):
 
 # 「答案對、格式不對」：多印了說明文字（BMI = 55.56）或提示字（請輸入身高：）。
 # 規則與 assets/app.js 的 answerInside 相同（tools/test_detect.py 對拍），刻意保守：
-# 答案前面只能是空的或以 : = ： is 是 為 等於 結尾，後面只能是標點，多印的整行不可以有數字。
+# 答案前面只能是空的或以 : = ： is 是 為 等於 結尾（且不含數字），後面只能是標點，
+# 多印的整行只能是提示字（以 : ： ? ？ 結尾）。
 ANS_LABEL_END = re.compile(r"(?:[:=：]|(?:^|[^A-Za-z])is|是|為|为|等於|等于)[ \t\u3000]*$", re.I)
 ANS_TAIL_OK = re.compile(r"^[ \t\u3000.。!！,，;；)）]*$")
+ANS_PROMPT_LINE = re.compile(r"^[^0-9]*[:：?？][ \t\u3000]*$")
 
 
 def line_has_answer(line, want):
@@ -143,7 +151,8 @@ def line_has_answer(line, want):
     k = line.find(want)
     while k >= 0:
         pre, post = line[:k], line[k + len(want):]
-        if (pre == "" or ANS_LABEL_END.search(pre)) and ANS_TAIL_OK.match(post):
+        if (pre == "" or (ANS_LABEL_END.search(pre) and not re.search(r"[0-9]", pre))) \
+                and ANS_TAIL_OK.match(post):
             return True
         k = line.find(want, k + 1)
     return False
@@ -161,7 +170,7 @@ def answer_inside(actual, expected, mode="strict"):
         if i < len(want) and line_has_answer(line, want[i]):
             i += 1
             continue
-        if re.search(r"[0-9]", line):
+        if line != "" and not ANS_PROMPT_LINE.match(line):
             return False
     return i == len(want)
 
@@ -175,10 +184,11 @@ def alt_input(text):
 # 題號：q3、Q3、q1a、q1_a、Q1(a)、第3題、第1題a、hw2_3b…
 # 這段規則與 assets/app.js 的 detectQid 必須一致，由 tools/test_detect.py 對拍把關。
 QID_RE = re.compile(
-    r"(?:^|[^a-z0-9])q\s*(\d{1,2})(?:\s*[-_.]?\s*\(?\s*([a-z])\s*\)?(?![a-z0-9]))?(?![0-9])",
+    r"(?:^|[^a-z0-9])q[ \t\u3000]*(\d{1,2})(?:[ \t\u3000]*[-_.]?[ \t\u3000]*\(?[ \t\u3000]*([a-z])[ \t\u3000]*\)?(?![a-z0-9]))?(?![0-9])",
     re.I | re.ASCII)
 QID_CN_RE = re.compile(
-    r"第\s*(\d{1,2})\s*題(?:\s*[-_.]?\s*\(?\s*([a-z])\s*\)?(?![a-z0-9]))?", re.I | re.ASCII)
+    r"第[ \t\u3000]*(\d{1,2})[ \t\u3000]*題(?:[ \t\u3000]*[-_.]?[ \t\u3000]*\(?[ \t\u3000]*([a-z])[ \t\u3000]*\)?(?![a-z0-9]))?",
+    re.I | re.ASCII)
 QID_BARE_RE = re.compile(
     r"(?:^|[^0-9])(\d{1,2})(?:[-_.]?\(?([a-z])\)?(?![a-z0-9]))?(?![0-9])", re.I | re.ASCII)
 
@@ -206,18 +216,21 @@ def detect_qid(name, qids):
             return q
     # 先把學號和「HW1」這種作業編號拿掉再找數字：不然路徑裡的 _HW1 會讓
     # 任何認不出題號的檔案都被判成 Q1，默默掛到第一題去
-    stripped = re.sub(r"HW\s*\d+", "_", name, flags=re.I)
+    # 只剩一個可能的題號才採用：「3 (1).py」「ex3_ver2.py」有兩個數字，猜錯會默默掛到別題
+    stripped = re.sub(r"HW[ \t\u3000]*\d+", "_", name, flags=re.I | re.ASCII)
     stripped = re.sub(r"[A-Za-z]?\d{6,12}", "_", stripped, flags=re.ASCII)
-    last, pos = "", 0
+    found, pos = "", 0
     while True:
         m = QID_BARE_RE.search(stripped, pos)
         if not m:
             break
-        q = qid_from_parts(m.group(1), m.group(2), qids)
-        if q:
-            last = q
+        if int(m.group(1)) != 0:
+            q = qid_from_parts(m.group(1), m.group(2), qids) or ("?" + m.group(1) + (m.group(2) or ""))
+            if found and found != q:
+                return ""
+            found = q
         pos = m.start() + 1
-    return last
+    return "" if found.startswith("?") else found
 
 
 def detect_hw(path):

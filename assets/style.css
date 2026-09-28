@@ -476,3 +476,5 @@ code.io { font-family: var(--mono); font-size: 12px; white-space: pre; }
 .statement > summary { cursor: pointer; font-size: 13px; font-weight: 600; }
 .statement-body { white-space: pre-wrap; font-size: 13.5px; line-height: 1.65; margin-top: 6px; }
 #hwHandout { font-size: 13px; }
+.drop.locked { opacity: .5; pointer-events: none; }
+#filesCard.locked .subs { opacity: .7; }
