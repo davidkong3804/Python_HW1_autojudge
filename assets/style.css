@@ -478,3 +478,11 @@ code.io { font-family: var(--mono); font-size: 12px; white-space: pre; }
 #hwHandout { font-size: 13px; }
 .drop.locked { opacity: .5; pointer-events: none; }
 #filesCard.locked .subs { opacity: .7; }
+.rule-fixed { font-size: 13px; color: var(--muted); max-width: 320px; }
+.pecheck { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; white-space: nowrap;
+  background: var(--warn-bg); color: var(--warn); border-radius: 4px; padding: 1px 7px 1px 4px; margin-right: 4px; cursor: pointer; }
+.pecheck.on { background: var(--ok-bg); color: var(--ok); }
+.pebox { display: flex; gap: 8px; align-items: flex-start; border-radius: 8px; padding: 8px 12px; margin: 10px 0;
+  font-size: 13.5px; background: var(--warn-bg); color: var(--ink); cursor: pointer; }
+.pebox.on { background: var(--ok-bg); }
+.pebox input { margin-top: 3px; flex: none; }
