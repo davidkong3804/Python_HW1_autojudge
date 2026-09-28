@@ -135,6 +135,25 @@ console.log(JSON.stringify(items.map(function (it) {
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# (實際輸出, 預期輸出, 應該算「答案對但格式不符」嗎, 說明)
+ANSWER_CASES = [
+    ("BMI = 55.56", "55.56", True, "多印了 BMI = 標籤"),
+    ("BMI: 55.56\n", "55.56", True, "冒號標籤"),
+    ("BMI：55.56", "55.56", True, "全形冒號"),
+    ("請輸入身高與體重：\n55.56", "55.56", True, "多印一行提示字"),
+    ("The password is Weak.", "Weak", True, "is + 句點"),
+    ("答案是 3,4,5", "3,4,5", True, "中文標籤"),
+    ("Not Prime,Odd", "Prime,Odd", False, "Not Prime 不是 Prime 的格式問題：答案其實錯了"),
+    ("BMI = 55.57", "55.56", False, "數字不一樣就是錯"),
+    ("BMI = 155.56", "55.56", False, "前面黏著數字不算"),
+    ("55.56 kg/m2", "55.56", False, "後面多了單位：保守起見不算"),
+    ("55.55\nBMI = 55.56", "55.56", False, "多印的行有數字（可能是別的答案）"),
+    ("BMI = -7.00", "7.00", False, "負號不是標籤"),
+    ("weak", "Weak", False, "大小寫不同（嚴格模式）"),
+    ("x = 1\ny = 2", "1\n2", True, "多行答案各自帶標籤"),
+    ("", "0", False, "沒有輸出"),
+]
+
 FEATURE_CASES = [
     ("for i in range(3):\n    print(i)\n", ["for"]),
     ("i = 0\nwhile i < 3:\n    i += 1\n", ["while"]),
@@ -145,6 +164,43 @@ FEATURE_CASES = [
     ("from datetime import datetime\nimport os.path\n", ["import:datetime", "import:os"]),
     ("print('unclosed\n", None),
 ]
+
+
+def check_answers():
+    """答案對但格式不符的判定：Python 版與 app.js 版都要給出預期結果。"""
+    bad = []
+    for actual, expected, want, note in ANSWER_CASES:
+        got = grade_cli.answer_inside(actual, expected)
+        if got != want:
+            bad.append("格式判定（%s）：預期 %s，grade_cli 給 %s" % (note, want, got))
+    node = shutil.which("node") or shutil.which("nodejs")
+    if node:
+        with open(os.path.join(ROOT, "assets", "app.js"), encoding="utf-8") as fh:
+            src = fh.read()
+        a, b = src.find("/* --8<-- answer:start"), src.find("/* --8<-- answer:end")
+        block = src[src.index("\n", a) + 1:b]
+        harness = block + """
+var cases = JSON.parse(process.argv[2]);
+console.log(JSON.stringify(cases.map(function (c) { return answerInside(c[0], c[1], 'strict'); })));
+"""
+        tmp = tempfile.mkdtemp(prefix="autojudge_ans_")
+        try:
+            js = os.path.join(tmp, "ans.js")
+            with open(js, "w", encoding="utf-8") as fh:
+                fh.write(harness)
+            proc = subprocess.run([node, js, json.dumps([[c[0], c[1]] for c in ANSWER_CASES])],
+                                  capture_output=True, text=True, timeout=60)
+            if proc.returncode != 0:
+                bad.append("node 執行失敗：%s" % proc.stderr.strip())
+            else:
+                for (actual, expected, want, note), got in zip(ANSWER_CASES, json.loads(proc.stdout)):
+                    if got != want:
+                        bad.append("格式判定（%s）：預期 %s，app.js 給 %s" % (note, want, got))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    print("  %s格式不符判定：%d 個案例%s" % (GREEN if not bad else RED, len(ANSWER_CASES),
+                                       "，網頁版與命令列版一致" + RESET if not bad else "有錯" + RESET))
+    return bad
 
 
 def check_features():
@@ -207,6 +263,7 @@ def main():
 
     print()
     failures.extend(check_features())
+    failures.extend(check_answers())
     print()
     print("=" * 72)
     if failures:

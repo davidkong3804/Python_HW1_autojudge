@@ -15,6 +15,44 @@ META = {
     "submission": "學號_HW2.zip → 學號_HW2/q1a.py、q1b.py … q4b.py、q5.py、q6.py",
     "grading": "Q1~Q4 各 20 分（a、b 子題各 10 分）、Q5~Q6 各 10 分，共 100 分；"
                "每個子題／每題 5 組測資、每組 2 分",
+    "handout": "handout.pdf",        # 作業定稿（hw/hw2/handout.pdf），網頁上可以直接點開
+}
+
+# 作業定稿的題目敘述（原文），網頁「測資與參考解答」裡看得到，批改時對照題意用。
+# a、b 子題共用同一段，用 group 對應。
+STATEMENTS = {
+    "q1": "Write a program to reverse the order of words in a sentence.\n"
+          "a. Use a loop\nb. Use list slicing only\n"
+          "Hint: for b, you may use string.join",
+    "q2": "Create a program that generates prime numbers within a specified range using a function, "
+          "where the range is between N1 and N2, including N1 and N2, if N1 or N2 are prime numbers. "
+          "Moreover, N1 and N2 are positive integers, N1 < N2, and N1 and N2 are separated by a space. "
+          "Please output the prime numbers in one line in ascending order and separate them by commas. "
+          "If there are no prime numbers, output 0.\n"
+          "a. use for loop\nb. use while loop\n"
+          "Hint: You need to define a function in both sub-questions",
+    "q3": "Write a program to remove duplicates from a list of numbers and output them in ascending order, "
+          "where numbers are separated by commas.\n"
+          "a. Use a loop\nb. Use a set",
+    "q4": "Create a program that finds and prints the common elements between two lists, sorted in the "
+          "following order: digits 0~9, uppercase letters A~Z, and lowercase letters a~z. If there are no "
+          "common elements, please print \u201cN/A\u201d. TA will give you two lines separately and there is no "
+          "duplication in a line. Please use two input() to read input data. The first line is the first "
+          "list and the second line is the second list. The elements in both lines are separated by commas.\n"
+          "a. Loop is needed\nb. Define a function to do the comparison of two lists\n"
+          "Hint: the codes in b. should be different with those in a.",
+    "q5": "Write a program to convert a binary number (given as a string) to a decimal number, where the "
+          "converted decimal number is positive.",
+    "q6": "Write a program that calculates the difference between two dates using the datetime module. "
+          "The date format is YYYY-MM-DD, the unit of the difference is day, and two dates are in one line, "
+          "separated by comma. If the input date format is incorrect or the date doesn\u2019t exist, "
+          "please show \u201cInvalid\u201d\n"
+          "Hint 1: TAs may give you the invalid date format, such as 10-01-2026.\n"
+          "Hint 2: TAs may give you non-existence dates, such as 2026-09-31.\n"
+          "Hint 3: If the month or day is a single digit, automatically add a leading zero. "
+          "Here is an example: 2023-1-2 \u2192 2023-01-02.\n"
+          "Hint 4: The calculated result should always be non-negative. "
+          "Remember to use the absolute value function, abs().",
 }
 
 

@@ -300,9 +300,6 @@ th.sortable:focus-visible, td.score:focus-visible { outline: 2px solid var(--bra
 .selftest { margin: 12px 0 0; padding: 8px 12px; border-radius: 8px; font-size: 13.5px; }
 .selftest.ok { background: var(--ok-bg); color: var(--ok); }
 .selftest.bad { background: var(--bad-bg); color: var(--bad); font-weight: 600; }
-.options { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 10px; }
-.options > summary { cursor: pointer; font-size: 14px; font-weight: 600; }
-.optgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px 20px; margin-top: 10px; }
 
 .tagline.bad { color: var(--bad); border-color: var(--bad); }
 .badge { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 4px; padding: 1px 6px;
@@ -435,3 +432,47 @@ code.io { font-family: var(--mono); font-size: 12px; white-space: pre; }
 .toast.bad { border-left: 4px solid #f87171; }
 .toast.out { opacity: 0; transform: translateY(8px); }
 @media (prefers-color-scheme: dark) { .toast { background: #e8eaee; color: #16181d; } }
+
+/* 答案對但格式不符 */
+.case.pe > .head { background: var(--warn-bg); }
+.tag.pe { background: var(--warn); color: #fff; }
+.pe-row { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; margin-top: 6px;
+  padding-top: 6px; border-top: 1px dashed color-mix(in srgb, var(--warn) 40%, transparent); }
+.pe-row > span:first-child { flex: 1 1 320px; }
+
+/* ================================================================== */
+/* 評分標準：三個白話問題，按鈕選一次就好                                  */
+/* ================================================================== */
+.rules { border: 1px solid var(--line); border-radius: 10px; padding: 4px 14px 10px; margin: 0 0 14px; }
+.rules > legend { font-weight: 700; font-size: 14px; padding: 0 6px; }
+.rules > legend .muted { font-weight: 400; margin-left: 6px; }
+.rule { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap;
+  padding: 10px 0; border-bottom: 1px dashed var(--line); }
+.rules > .rule:last-of-type { border-bottom: 0; }
+.rule-q { flex: 1 1 320px; font-size: 14px; font-weight: 600; }
+.rule-eg { display: block; font-weight: 400; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.rule-eg code, .rule-q code { font-family: var(--mono); font-size: 12px; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; white-space: pre; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; flex: none; }
+.seg label { position: relative; cursor: pointer; }
+.seg label + label { border-left: 1px solid var(--line); }
+.seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.seg span { display: block; padding: 6px 12px; font-size: 13px; white-space: nowrap; }
+.seg input:checked + span { background: var(--brand); color: #fff; font-weight: 600; }
+.seg input:focus-visible + span { outline: 2px solid var(--brand); outline-offset: -2px; }
+.seg label:hover span { background: color-mix(in srgb, var(--brand) 10%, transparent); }
+.seg label:hover input:checked + span { background: var(--brand); }
+.rules-adv { padding-top: 8px; }
+.rules-adv > summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.rules-adv .rule:last-child { border-bottom: 0; }
+.runrow { margin-top: 4px; }
+.rules-summary { margin: 8px 0 0; }
+@media (max-width: 560px) {
+  .seg { display: flex; width: 100%; }
+  .seg label { flex: 1; text-align: center; }
+  .seg span { padding: 6px 6px; white-space: normal; }
+}
+.statement { margin: 0 0 12px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: var(--bg); }
+.statement > summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.statement-body { white-space: pre-wrap; font-size: 13.5px; line-height: 1.65; margin-top: 6px; }
+#hwHandout { font-size: 13px; }

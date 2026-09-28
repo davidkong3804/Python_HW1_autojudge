@@ -34,7 +34,10 @@ META = {
     "subtitle": "一句話列出這次的題目",
     "submission": "學號_HW3.zip → 學號_HW3/q1.py ~ q5.py",   # 顯示在網頁上的繳交格式
     "grading": "每題 20 分；每題 5 組測資",                   # 顯示在網頁上的配分說明
+    "handout": "handout.pdf",     # 選填：作業定稿 PDF 放在 hw/hw3/handout.pdf，網頁上會有連結
 }
+
+STATEMENTS = {"q1": "題目原文…"}   # 選填：每題（group）的題目敘述，網頁檢視測資時會一起顯示
 
 def build_q1():
     # 每筆 = (輸入, 這組在測什麼)。多行輸入用 "\n" 分隔（一行 = 一次 input()）

@@ -102,7 +102,7 @@
       var self = this;
       if (self.booting) return self.booting;
       self.booting = new Promise(function (resolve, reject) {
-        var w = new Worker('assets/worker.js?v=2.0');
+        var w = new Worker('assets/worker.js?v=2.3');
         self.worker = w;
         w.onmessage = function (ev) {
           var m = ev.data;
@@ -488,7 +488,7 @@
       results: null,          // 學號 -> 題號 -> 批改紀錄
       runInfo: null,          // 這批成績是用什麼設定算出來的（文字）
       runSig: '',             // 同上（機器比對用）：設定一變，成績就過期
-      runMeta: null,          // { mode, lenientRe, lenientInput, quick, at }
+      runMeta: null,          // { mode, lenientRe, lenientInput, formatCredit, timeout, at }
       adjust: {},             // 學號 -> 題號 -> { delta, note }
       dirty: {}               // 批改後檔案有變動的學號
     };
@@ -1132,6 +1132,7 @@
   /* ------------------------------------------------------------------ */
   /* 比對                                                                 */
   /* ------------------------------------------------------------------ */
+  /* --8<-- answer:start（tools/test_detect.py 會把這段抓出來跟 grade_cli.py 對拍） */
   function normalize(text, mode) {
     var lines = String(text === undefined || text === null ? '' : text)
       .replace(/\r\n?/g, '\n').split('\n')
@@ -1141,6 +1142,44 @@
     if (mode === 'loose') return lines.join('\n').replace(/\s+/g, '').toLowerCase();
     return lines.join('\n');
   }
+
+  /* 「答案對、格式不對」：同學多印了說明文字（BMI = 55.56）或提示字（請輸入身高：）。
+   * 這種不該跟算錯一樣直接 0 分，但給多少由助教決定（批改選項「格式不符給分」）。
+   *
+   * 判定刻意保守，只接受看起來像「標籤」的多餘文字：
+   *   - 答案前面只能是空的，或以 : = ： is 是 為 等於 結尾（BMI = 55.56、答案是 Weak）
+   *   - 答案後面只能是標點或空白（55.56。）
+   *   - 答案以外多印的整行不可以有數字（有數字的多半是另一個答案或除錯輸出）
+   * 否則 Not Prime,Odd 會被當成 Prime,Odd 的格式問題，把錯的答案算成對的。 */
+  var ANS_LABEL_END = /(?:[:=：]|(?:^|[^A-Za-z])is|是|為|为|等於|等于)[ \t\u3000]*$/i;
+  var ANS_TAIL_OK = /^[ \t\u3000.。!！,，;；)）]*$/;
+
+  function lineHasAnswer(line, want) {
+    if (line === want) return true;
+    if (!want) return false;
+    var k = line.indexOf(want);
+    while (k >= 0) {
+      var pre = line.slice(0, k), post = line.slice(k + want.length);
+      if ((pre === '' || ANS_LABEL_END.test(pre)) && ANS_TAIL_OK.test(post)) return true;
+      k = line.indexOf(want, k + 1);
+    }
+    return false;
+  }
+
+  function answerInside(actual, expected, mode) {
+    var m = mode === 'loose' ? 'trim' : mode;
+    var fold = function (x) { return mode === 'loose' ? x.toLowerCase() : x; };
+    var want = normalize(expected, m).split('\n').map(fold);
+    var got = normalize(actual, m).split('\n').map(fold);
+    if (!want.join('')) return false;
+    var i = 0;
+    for (var j = 0; j < got.length; j++) {
+      if (i < want.length && lineHasAnswer(got[j], want[i])) { i++; continue; }
+      if (/[0-9]/.test(got[j])) return false;
+    }
+    return i === want.length;
+  }
+  /* --8<-- answer:end */
 
   /* 同一筆測資的「逐行版」：把空白與逗號換成換行。
      老師的規定是「一行就是一次 input()」，所以這是預設關閉的非標準選項；
@@ -1351,14 +1390,39 @@
   /* ------------------------------------------------------------------ */
   var SETTINGS_KEY = 'autojudge.settings.v1';
 
+  function radioVal(name) {
+    var r = document.querySelector('input[name="' + name + '"]:checked');
+    return r ? r.value : '';
+  }
+
+  function setRadio(name, value) {
+    var r = document.querySelector('input[name="' + name + '"][value="' + value + '"]');
+    if (r) r.checked = true;
+  }
+
   function settings() {
     return {
-      mode: $('compareMode').value,
+      mode: radioVal('compareMode') || 'strict',
       timeout: Math.max(1, parseInt($('timeout').value, 10) || 8) * 1000,
-      quick: $('stopOnFirst').checked,
-      lenientRe: $('lenientRe').checked,
-      lenientInput: $('lenientInput').checked
+      lenientRe: radioVal('lenientRe') !== '0',
+      lenientInput: radioVal('lenientInput') === '1',
+      formatCredit: parseFloat(radioVal('formatCredit')) || 0
     };
+  }
+
+  /* 開始批改按鈕下面的一行話：現在用的是什麼標準 */
+  var COMPARE_TEXT = { strict: '空白、大小寫不同算錯', trim: '空白不同不算錯', loose: '空白、大小寫不同都不算錯' };
+
+  function renderRulesSummary() {
+    var s = settings();
+    var bits = [
+      '多印說明文字：' + ({ 0: '不給分', 0.5: '給一半', 1: '給全分' })[s.formatCredit],
+      COMPARE_TEXT[s.mode],
+      '程式最後才出錯：' + (s.lenientRe ? '給分' : '不給分')
+    ];
+    if (s.timeout !== 8000) bits.push('每筆最多 ' + s.timeout / 1000 + ' 秒');
+    if (s.lenientInput) bits.push('接受一行拆多次 input()（非老師規定）');
+    $('rulesSummary').textContent = '評分標準：' + bits.join(' · ');
   }
 
   function saveSettings() {
@@ -1369,11 +1433,11 @@
     try {
       var s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
       if (!s) return;
-      if (/^(strict|trim|loose)$/.test(s.mode)) $('compareMode').value = s.mode;
+      if (/^(strict|trim|loose)$/.test(s.mode)) setRadio('compareMode', s.mode);
       if (s.timeout) $('timeout').value = Math.round(s.timeout / 1000);
-      $('lenientRe').checked = s.lenientRe !== false;
-      $('lenientInput').checked = !!s.lenientInput;
-      // 「快速篩檢」會讓分數不準，不記住，每次都要自己打開
+      setRadio('lenientRe', s.lenientRe === false ? '0' : '1');
+      setRadio('lenientInput', s.lenientInput ? '1' : '0');
+      if (s.formatCredit === 0.5 || s.formatCredit === 1) setRadio('formatCredit', String(s.formatCredit));
     } catch (e) { /* noop */ }
   }
 
@@ -1390,8 +1454,8 @@
   function currentSig() {
     var s = settings();
     return stableStringify({
-      hw: HW_ID, cfg: CFG, mode: s.mode, t: s.timeout, quick: s.quick,
-      re: s.lenientRe, alt: s.lenientInput
+      hw: HW_ID, cfg: CFG, mode: s.mode, t: s.timeout,
+      re: s.lenientRe, alt: s.lenientInput, pe: s.formatCredit
     });
   }
 
@@ -1471,8 +1535,9 @@
       chain = chain.then(function () {
         if (run.cancel) return;
         var rec = {
-          score: 0, max: prob.points, cases: [], passed: 0, reok: 0, viaAlt: 0,
-          file: sub.path, key: sub.key, qid: prob.id, flags: [], quick: cfg.quick
+          score: 0, max: prob.points, cases: [], passed: 0, reok: 0, viaAlt: 0, pe: 0,
+          file: sub.path, key: sub.key, qid: prob.id, flags: [],
+          formatCredit: cfg.formatCredit
         };
         var inner = Promise.resolve();
         var stopped = '';
@@ -1507,14 +1572,17 @@
               else if (outputOk) status = 'reok';          // 輸出對了，但程式後來才出事
               else if (r.status === 'timeout') status = 'tle';
               else status = 're';
+              // 答案對、只是多印了說明文字：程式正常結束，或印完才出錯而且「印完才出錯」本來就給分
+              if ((status === 'wa' || (status === 're' && cfg.lenientRe)) &&
+                  answerInside(r.stdout, t.expected, cfg.mode)) status = 'pe';
 
               var passed = status === 'ac' || (status === 'reok' && cfg.lenientRe);
               if (passed) { rec.score += prob.pointsPerTest; rec.passed++; }
+              if (status === 'pe') { rec.pe++; rec.score += prob.pointsPerTest * cfg.formatCredit; }
               if (status === 'reok') rec.reok++;
               if (r.viaAlt) rec.viaAlt++;
               if (status === 'tle') tleCount++;
 
-              if (!passed && cfg.quick) stopped = '快速篩檢：前面已經錯了，略過剩下的測資';
               // 無窮迴圈的人不要讓他把每一筆逾時都跑完（每次逾時都要重開直譯器）
               if (tleCount >= 2 && !stopped) stopped = '連續逾時兩次，直接判定其餘測資也會逾時';
 
@@ -1605,7 +1673,8 @@
       S.runSig = sig;
       S.runInfo = info;
       S.runMeta = { mode: cfg.mode, lenientRe: cfg.lenientRe, lenientInput: cfg.lenientInput,
-                    quick: cfg.quick, timeout: cfg.timeout, at: Date.now() };
+                    formatCredit: cfg.formatCredit,
+                    timeout: cfg.timeout, at: Date.now() };
       persist();
       renderScores(true);
       if (res.cancelled) toast('已取消。完成的 ' + res.done.length + ' 位學生成績已保留，其餘標成「需重批」。', 'warn', 6000);
@@ -1647,7 +1716,8 @@
             p.tests.slice(0, 2).forEach(function (t) {
               two = two.then(function () {
                 return Engine.run(sub.code, t.input + '\n', cfg.timeout).then(function (r) {
-                  if (r.status === 'ok' && normalize(r.stdout, cfg.mode) === normalize(t.expected, cfg.mode)) hit++;
+                  if (r.status === 'ok' && (normalize(r.stdout, cfg.mode) === normalize(t.expected, cfg.mode) ||
+                      answerInside(r.stdout, t.expected, cfg.mode))) hit++;
                   done++;
                   $('bar').style.width = (total ? Math.round(done / total * 100) : 100) + '%';
                   $('progressText').textContent = '自動配對：' + done + ' / ' + total;
@@ -1729,7 +1799,7 @@
       var row = {
         id: id, name: names[id] || '', recs: recs || {}, submitted: !!recs,
         inRoster: !!roster[id], cells: {}, total: 0, adjTotal: 0, flags: [],
-        adjusted: false, conflict: false, dirty: !!S.dirty[id]
+        adjusted: false, conflict: false, dirty: !!S.dirty[id], pe: 0
       };
       ACTIVE.forEach(function (p) {
         var rec = row.recs[p.id];
@@ -1742,6 +1812,7 @@
           rec.flags.forEach(function (f) { row.flags.push(qLabel(p.id) + ' ' + f); });
         }
         if (rec && rec.conflict) row.conflict = true;
+        if (rec && rec.pe) row.pe += rec.pe;
       });
       row.total = round2(row.total);
       row.adjTotal = round2(row.adjTotal);
@@ -1759,6 +1830,7 @@
       case 'missing': return !row.submitted;
       case 'notroster': return ROSTER.length > 0 && !row.inRoster;
       case 'dirty': return row.dirty;
+      case 'format': return row.pe > 0;
       default: return true;
     }
   }
@@ -1906,7 +1978,7 @@
           if (a && a.delta) { td.className += ' adj'; td.appendChild(el('span', 'mark adj', '✎')); }
           if (fin === rec.max) td.className += ' full';
           else if (fin === 0) td.className += ' zero';
-          var tip = [rec.passed + '/' + rec.cases.length + ' 筆通過'];
+          var tip = [rec.passed + '/' + rec.cases.length + ' 筆通過' + (rec.pe ? '，' + rec.pe + ' 筆格式不符' : '')];
           if (a && a.delta) tip.push('自動 ' + rec.score + '，手動 ' + (a.delta > 0 ? '+' : '') + a.delta + (a.note ? '（' + a.note + '）' : ''));
           if (rec.flags && rec.flags.length) tip.push('寫法提示：' + rec.flags.join('、'));
           if (rec.conflict) tip.push('有多份檔案，取最高分');
@@ -1927,6 +1999,11 @@
         var fb = el('span', 'badge flag', '⚑ ' + row.flags.length);
         fb.title = row.flags.join('\n');
         note.appendChild(fb);
+      }
+      if (row.pe) {
+        var pb = el('span', 'badge warn', '格式 ' + row.pe);
+        pb.title = row.pe + ' 筆測資答案對、但多印了說明文字或提示字';
+        note.appendChild(pb);
       }
       if (row.adjusted) {
         var ab = el('span', 'badge adj', '✎ ' + (row.adjTotal > 0 ? '+' : '') + row.adjTotal);
@@ -1973,12 +2050,14 @@
     if (shown.length !== rows.length) bits.push('目前顯示 ' + shown.length + ' 位');
     $('summaryStat').textContent = bits.join(' · ');
 
-    var reokTotal = 0, altTotal = 0, flagTotal = 0;
+    var reokTotal = 0, altTotal = 0, flagTotal = 0, peTotal = 0, peStudents = 0;
     sub.forEach(function (r) {
       Object.keys(r.recs).forEach(function (q) {
         reokTotal += r.recs[q].reok || 0;
         altTotal += r.recs[q].viaAlt || 0;
+        peTotal += r.recs[q].pe || 0;
       });
+      if (r.pe) peStudents++;
       flagTotal += r.flags.length ? 1 : 0;
     });
     var meta = S.runMeta || {};
@@ -2002,6 +2081,31 @@
     noteBox.hidden = msgs.length === 0;
     noteBox.innerHTML = '';
     msgs.forEach(function (m) { noteBox.appendChild(el('div', '', m)); });
+    if (peTotal) {
+      /* 格式不符最常見、影響最多人，給分比例直接在這裡改，改完一鍵重批 */
+      var credit = meta.formatCredit || 0;
+      var pbox = el('div', 'pe-row');
+      pbox.appendChild(el('span', '', peStudents + ' 位同學共 ' + peTotal +
+        ' 筆「答案對、但多印了說明文字或提示字」（例如印成 BMI = 55.56），目前每筆給 ' +
+        CREDIT_TEXT[String(credit)] + '。'));
+      [['0', '不給分'], ['0.5', '給一半'], ['1', '給全分']].forEach(function (o) {
+        var b = el('button', 'btn small' + (String(credit) === o[0] ? ' primary' : ' ghost'), o[1]);
+        b.setAttribute('data-needs-idle', '');
+        b.disabled = String(credit) === o[0];
+        b.onclick = function () {
+          setRadio('formatCredit', o[0]);
+          saveSettings();
+          renderRulesSummary();
+          gradeStudents(null);
+        };
+        pbox.appendChild(b);
+      });
+      var see = el('button', 'btn small ghost', '只看這些同學');
+      see.onclick = function () { view.filter = 'format'; $('scoreFilter').value = 'format'; renderScores(false); };
+      pbox.appendChild(see);
+      noteBox.appendChild(pbox);
+      noteBox.hidden = false;
+    }
 
     var info = $('runConfigInfo');
     info.innerHTML = '';
@@ -2018,11 +2122,13 @@
     if (scroll) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  var CREDIT_TEXT = { '0': '0 分（只標出來）', '0.5': '一半分數', '1': '全部分數' };
+
   var MODE_TEXT = { strict: '嚴格', trim: '忽略每行前後空白', loose: '忽略所有空白與大小寫' };
 
   var STATUS_TEXT = {
     ac: '正確', wa: '答案錯誤', re: '執行錯誤', tle: '執行逾時',
-    reok: '輸出正確但程式出錯', skip: '未執行'
+    reok: '輸出正確但程式出錯', pe: '答案對但格式不符', skip: '未執行'
   };
 
   /* ------------------------------------------------------------------ */
@@ -2138,6 +2244,7 @@
     var line = el('p', 'dline');
     line.appendChild(el('strong', 'bigscore' + (fin === rec.max ? ' full' : fin === 0 ? ' zero' : ''), fin + ' / ' + rec.max));
     line.appendChild(el('span', 'muted', ' 分 · ' + rec.passed + '/' + rec.cases.length + ' 筆通過' +
+      (rec.pe ? '，' + rec.pe + ' 筆格式不符（每筆給 ' + CREDIT_TEXT[String(rec.formatCredit || 0)] + '）' : '') +
       (adj && adj.delta ? ' · 自動 ' + rec.score + ' 分' : '')));
     body.appendChild(line);
     var fp = el('p', 'muted small path', '檔案：' + rec.file);
@@ -2337,7 +2444,7 @@
     ACTIVE.forEach(function (p) { head.push(qLabel(p.id) + '(' + round2(p.points) + ')'); });
     head.push('總分');
     ACTIVE.forEach(function (p) { head.push(qLabel(p.id) + '通過筆數'); });
-    head.push('手動調整', '寫法提示', '狀態');
+    head.push('格式不符筆數', '手動調整', '寫法提示', '狀態');
     rows.push(head);
     scoreRows().sort(function (a, b) { return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; }).forEach(function (r) {
       var line = [r.id, r.name];
@@ -2352,7 +2459,7 @@
       if (ROSTER.length && !r.inRoster) status.push('不在名單');
       if (r.conflict) status.push('有重複檔案');
       if (r.dirty) status.push('需重批');
-      line.push(adjNotes(r), flagNotes(r), status.join('、'));
+      line.push(r.pe || '', adjNotes(r), flagNotes(r), status.join('、'));
       rows.push(line);
     });
     // 成績單一定要帶著「這是用什麼設定算出來的」，否則兩份 CSV 看起來一樣卻不同義
@@ -2363,7 +2470,8 @@
     if (m.at) {
       rows.push(['批改時間 ' + fmtTime(m.at) + '，比對方式：' + MODE_TEXT[m.mode || 'strict'] +
         '，輸出正確但程式出錯：' + (m.lenientRe === false ? '不給分' : '給分') +
-        (m.lenientInput ? '，相容一行拆多次 input()' : '') + (m.quick ? '，快速篩檢（分數不可用）' : '')]);
+        (m.lenientInput ? '，相容一行拆多次 input()' : '') +
+        '，答案對但格式不符：每筆給 ' + CREDIT_TEXT[String(m.formatCredit || 0)] + (m.quick ? '，快速篩檢（分數不可用）' : '')]);
     }
     return toCsvText(rows);
   }
@@ -2391,6 +2499,11 @@
         if (c.status === 'skip') return;
         var why = STATUS_TEXT[c.status];
         var detail = '  #' + c.n + ' ' + why + '：輸入 ' + shortIO(c.input) + '，應輸出 ' + shortIO(c.expected);
+        if (c.status === 'pe') {
+          out.push('  #' + c.n + ' 答案正確但格式不符：應只輸出 ' + shortIO(c.expected) + '，你的輸出 ' + shortIO(c.actual) +
+            '（請不要多印說明文字或提示字）');
+          return;
+        }
         if (c.status === 'wa' || c.status === 'reok') detail += '，你的輸出 ' + (c.actual === '' ? '（沒有輸出）' : shortIO(c.actual));
         if (c.status === 're' && c.stderr) {
           var lastLine = c.stderr.trim().split('\n').pop();
@@ -2427,6 +2540,14 @@
     box.appendChild(el('h3', '', qLabel(prob.id) + ' ' + prob.name +
       '：' + prob.tests.length + ' 組啟用中的測資，' + prob.points + ' 分，每組 ' +
       round2(prob.pointsPerTest) + ' 分'));
+    var base = problemOf(qid);
+    if (base && base.statement) {
+      var st = el('details', 'statement');
+      st.open = true;
+      st.appendChild(el('summary', '', '題目敘述（作業定稿原文）'));
+      st.appendChild(el('div', 'statement-body', base.statement));
+      box.appendChild(st);
+    }
     if (prob.requirement) box.appendChild(el('p', 'muted small', '寫法要求：' + prob.requirement + '（只提示，不自動扣分）'));
     var tbl = el('table');
     var thead = el('thead'), htr = el('tr');
@@ -2771,6 +2892,8 @@
     $('hwSubtitle').textContent = HW ? HW.subtitle || '' : '';
     $('hwSubmission').textContent = HW ? HW.submission || '' : '';
     $('hwGrading').textContent = HW ? HW.grading || '' : '';
+    $('hwHandout').hidden = !(HW && HW.handout);
+    if (HW && HW.handout) $('hwHandout').href = HW.handout;
     $('dropTitle').textContent = '把學生的 ' + (HW ? HW.title : '') + ' 繳交檔拖進來';
     var sel = $('viewQ');
     sel.innerHTML = '';
@@ -2949,12 +3072,14 @@
       });
     };
 
-    ['compareMode', 'timeout', 'stopOnFirst', 'lenientRe', 'lenientInput'].forEach(function (id) {
-      $(id).addEventListener('change', function () {
+    Array.prototype.forEach.call(document.querySelectorAll('#rules input'), function (inp) {
+      inp.addEventListener('change', function () {
         saveSettings();
+        renderRulesSummary();
         if (S.results) renderScores(false);
       });
     });
+    renderRulesSummary();
 
     /* ---- 成績表工具列 ---- */
     $('scoreSearch').oninput = function () { view.q = $('scoreSearch').value; renderScores(false); };

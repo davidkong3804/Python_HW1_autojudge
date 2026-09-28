@@ -6,6 +6,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
   "subtitle": "BMI、計算機、質數、數字和、密碼強度、一元二次方程式",
   "submission": "學號_HW1.zip → 學號_HW1/q1.py ~ q6.py",
   "grading": "Q1~Q4 各 15 分、Q5~Q6 各 20 分，共 100 分；每題 5 組測資",
+  "handout": "",
   "problems": [
    {
     "id": "q1",
@@ -16,6 +17,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
     "checks": [],
     "requirement": "",
     "keywords": "\\bbmi\\b",
+    "statement": "",
     "tests": [
      {
       "n": 1,
@@ -63,6 +65,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
     "checks": [],
     "requirement": "",
     "keywords": "augend|minuend|divisor|dividend|calculator|計算機",
+    "statement": "",
     "tests": [
      {
       "n": 1,
@@ -110,6 +113,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
     "checks": [],
     "requirement": "",
     "keywords": "\\bprime\\b|質數",
+    "statement": "",
     "tests": [
      {
       "n": 1,
@@ -157,6 +161,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
     "checks": [],
     "requirement": "",
     "keywords": "sum\\s*of\\s*digits|數字和",
+    "statement": "",
     "tests": [
      {
       "n": 1,
@@ -204,6 +209,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
     "checks": [],
     "requirement": "",
     "keywords": "password|weak|moderate|strong|密碼",
+    "statement": "",
     "tests": [
      {
       "n": 1,
@@ -251,6 +257,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
     "checks": [],
     "requirement": "",
     "keywords": "root|quadratic|判別式|sqrt",
+    "statement": "",
     "tests": [
      {
       "n": 1,
@@ -331,6 +338,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
   "subtitle": "反轉單字、質數產生器、去除重複、共同元素、二進位轉十進位、日期計算",
   "submission": "學號_HW2.zip → 學號_HW2/q1a.py、q1b.py … q4b.py、q5.py、q6.py",
   "grading": "Q1~Q4 各 20 分（a、b 子題各 10 分）、Q5~Q6 各 10 分，共 100 分；每個子題／每題 5 組測資、每組 2 分",
+  "handout": "hw/hw2/handout.pdf",
   "problems": [
    {
     "id": "q1a",
@@ -343,6 +351,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
     ],
     "requirement": "要用迴圈反轉單字順序",
     "keywords": "reverse\\s*words|反轉",
+    "statement": "Write a program to reverse the order of words in a sentence.\na. Use a loop\nb. Use list slicing only\nHint: for b, you may use string.join",
     "tests": [
      {
       "n": 1,
@@ -393,6 +402,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
     ],
     "requirement": "只能用 list slicing（可搭配 join），不可以用迴圈",
     "keywords": "reverse\\s*words|反轉",
+    "statement": "Write a program to reverse the order of words in a sentence.\na. Use a loop\nb. Use list slicing only\nHint: for b, you may use string.join",
     "tests": [
      {
       "n": 1,
@@ -443,6 +453,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
     ],
     "requirement": "要用 for 迴圈，而且要定義函式",
     "keywords": "\\bprimes?\\b|質數",
+    "statement": "Create a program that generates prime numbers within a specified range using a function, where the range is between N1 and N2, including N1 and N2, if N1 or N2 are prime numbers. Moreover, N1 and N2 are positive integers, N1 < N2, and N1 and N2 are separated by a space. Please output the prime numbers in one line in ascending order and separate them by commas. If there are no prime numbers, output 0.\na. use for loop\nb. use while loop\nHint: You need to define a function in both sub-questions",
     "tests": [
      {
       "n": 1,
@@ -493,6 +504,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
     ],
     "requirement": "要用 while 迴圈，而且要定義函式",
     "keywords": "\\bprimes?\\b|質數",
+    "statement": "Create a program that generates prime numbers within a specified range using a function, where the range is between N1 and N2, including N1 and N2, if N1 or N2 are prime numbers. Moreover, N1 and N2 are positive integers, N1 < N2, and N1 and N2 are separated by a space. Please output the prime numbers in one line in ascending order and separate them by commas. If there are no prime numbers, output 0.\na. use for loop\nb. use while loop\nHint: You need to define a function in both sub-questions",
     "tests": [
      {
       "n": 1,
@@ -542,6 +554,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
     ],
     "requirement": "要用迴圈去除重複",
     "keywords": "duplicate|重複",
+    "statement": "Write a program to remove duplicates from a list of numbers and output them in ascending order, where numbers are separated by commas.\na. Use a loop\nb. Use a set",
     "tests": [
      {
       "n": 1,
@@ -591,6 +604,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
     ],
     "requirement": "要用 set 去除重複",
     "keywords": "duplicate|重複",
+    "statement": "Write a program to remove duplicates from a list of numbers and output them in ascending order, where numbers are separated by commas.\na. Use a loop\nb. Use a set",
     "tests": [
      {
       "n": 1,
@@ -640,6 +654,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
     ],
     "requirement": "要用迴圈找共同元素",
     "keywords": "common\\s*elements?|共同",
+    "statement": "Create a program that finds and prints the common elements between two lists, sorted in the following order: digits 0~9, uppercase letters A~Z, and lowercase letters a~z. If there are no common elements, please print “N/A”. TA will give you two lines separately and there is no duplication in a line. Please use two input() to read input data. The first line is the first list and the second line is the second list. The elements in both lines are separated by commas.\na. Loop is needed\nb. Define a function to do the comparison of two lists\nHint: the codes in b. should be different with those in a.",
     "tests": [
      {
       "n": 1,
@@ -689,6 +704,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
     ],
     "requirement": "要定義一個函式做比較",
     "keywords": "common\\s*elements?|共同",
+    "statement": "Create a program that finds and prints the common elements between two lists, sorted in the following order: digits 0~9, uppercase letters A~Z, and lowercase letters a~z. If there are no common elements, please print “N/A”. TA will give you two lines separately and there is no duplication in a line. Please use two input() to read input data. The first line is the first list and the second line is the second list. The elements in both lines are separated by commas.\na. Loop is needed\nb. Define a function to do the comparison of two lists\nHint: the codes in b. should be different with those in a.",
     "tests": [
      {
       "n": 1,
@@ -736,6 +752,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
     "checks": [],
     "requirement": "",
     "keywords": "binary|decimal|二進位",
+    "statement": "Write a program to convert a binary number (given as a string) to a decimal number, where the converted decimal number is positive.",
     "tests": [
      {
       "n": 1,
@@ -785,6 +802,7 @@ window.AUTOJUDGE_ASSIGNMENTS = [
     ],
     "requirement": "要使用 datetime 模組",
     "keywords": "datetime|date\\s*calculation|日期",
+    "statement": "Write a program that calculates the difference between two dates using the datetime module. The date format is YYYY-MM-DD, the unit of the difference is day, and two dates are in one line, separated by comma. If the input date format is incorrect or the date doesn’t exist, please show “Invalid”\nHint 1: TAs may give you the invalid date format, such as 10-01-2026.\nHint 2: TAs may give you non-existence dates, such as 2026-09-31.\nHint 3: If the month or day is a single digit, automatically add a leading zero. Here is an example: 2023-1-2 → 2023-01-02.\nHint 4: The calculated result should always be non-negative. Remember to use the absolute value function, abs().",
     "tests": [
      {
       "n": 1,

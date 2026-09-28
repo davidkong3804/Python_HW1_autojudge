@@ -128,6 +128,44 @@ def normalize(text, mode="strict"):
     return "\n".join(lines)
 
 
+# 「答案對、格式不對」：多印了說明文字（BMI = 55.56）或提示字（請輸入身高：）。
+# 規則與 assets/app.js 的 answerInside 相同（tools/test_detect.py 對拍），刻意保守：
+# 答案前面只能是空的或以 : = ： is 是 為 等於 結尾，後面只能是標點，多印的整行不可以有數字。
+ANS_LABEL_END = re.compile(r"(?:[:=：]|(?:^|[^A-Za-z])is|是|為|为|等於|等于)[ \t\u3000]*$", re.I)
+ANS_TAIL_OK = re.compile(r"^[ \t\u3000.。!！,，;；)）]*$")
+
+
+def line_has_answer(line, want):
+    if line == want:
+        return True
+    if not want:
+        return False
+    k = line.find(want)
+    while k >= 0:
+        pre, post = line[:k], line[k + len(want):]
+        if (pre == "" or ANS_LABEL_END.search(pre)) and ANS_TAIL_OK.match(post):
+            return True
+        k = line.find(want, k + 1)
+    return False
+
+
+def answer_inside(actual, expected, mode="strict"):
+    m = "trim" if mode == "loose" else mode
+    fold = (lambda x: x.lower()) if mode == "loose" else (lambda x: x)
+    want = [fold(x) for x in normalize(expected, m).split("\n")]
+    got = [fold(x) for x in normalize(actual, m).split("\n")]
+    if not "".join(want):
+        return False
+    i = 0
+    for line in got:
+        if i < len(want) and line_has_answer(line, want[i]):
+            i += 1
+            continue
+        if re.search(r"[0-9]", line):
+            return False
+    return i == len(want)
+
+
 def alt_input(text):
     """同一筆測資的逐行版（非標準，預設不用）：老師規定一行就是一次 input()。"""
     alt = re.sub(r"[,\s]+", "\n", str(text)).strip()
@@ -463,6 +501,8 @@ def main():
     ap.add_argument("--detail", default="", help="另外輸出逐筆明細 JSON")
     ap.add_argument("--config", default="",
                     help="套用網頁版「測資與配分設定」匯出的 JSON（關掉的測資、自訂測資、配分）")
+    ap.add_argument("--format-credit", type=float, choices=[0, 0.5, 1], default=0,
+                    help="答案對但多印了說明文字（例如 BMI = 55.56）的測資，每筆給幾成分數（預設 0，只標出來）")
     ap.add_argument("--strict-output", action="store_true",
                     help="嚴格模式：程式印完正確答案後才出錯（例如結尾多一個 input()）也算錯")
     ap.add_argument("--lenient-input", action="store_true",
@@ -550,6 +590,9 @@ def main():
                     st = "ac" if output_ok else "wa"
                 elif output_ok:
                     st = "reok"          # 輸出正確，但程式印完之後才出錯／逾時
+                if (st == "wa" or (st == "re" and not args.strict_output)) \
+                        and answer_inside(out, t["expected"], args.mode):
+                    st = "pe"            # 答案對，但多印了說明文字
                 if st == "tle":
                     tle_count += 1
                     if tle_count >= 2:
@@ -560,6 +603,9 @@ def main():
                     rec["passed"] += 1
                 if st == "reok":
                     rec["reok"] += 1
+                if st == "pe":
+                    rec["pe"] = rec.get("pe", 0) + 1
+                    rec["score"] += prob["pointsPerTest"] * args.format_credit
                 rec["cases"].append({"n": t["n"], "status": st, "input": shown_input,
                                      "expected": t["expected"], "actual": out[:3000].rstrip("\n"),
                                      "stderr": err[-800:], "viaAlt": via_alt})
@@ -588,12 +634,13 @@ def main():
             for q in qids:
                 rec = scores[student].get(q)
                 row.append("%d/%d" % (rec["passed"], len(rec["cases"])) if rec else "未繳交")
+            row.append(sum((scores[student].get(q) or {}).get("pe", 0) for q in qids) or "")
             row.append("；".join("%s %s" % (q.upper(), f) for q in qids
                                 for f in (scores[student].get(q) or {}).get("flags", [])))
             rows.append(row)
 
         head = ["學號"] + ["%s(%g)" % (q.upper(), problems[q]["points"]) for q in qids] + \
-               ["總分"] + ["%s通過筆數" % q.upper() for q in qids] + ["寫法提示"]
+               ["總分"] + ["%s通過筆數" % q.upper() for q in qids] + ["格式不符筆數", "寫法提示"]
         def safe(v):                       # 避免 Excel 把 =、+ 開頭當公式
             v = "" if v is None else str(v)
             return "'" + v if v and v[0] in "=+-@" and not re.fullmatch(r"-?\d+(\.\d+)?", v) else v
@@ -608,6 +655,10 @@ def main():
                 w.writerow([safe(line)])
         reok_total = sum(rec.get("reok", 0) for qs in scores.values() for rec in qs.values())
         alt_total = sum(rec.get("viaAlt", 0) for qs in scores.values() for rec in qs.values())
+        pe_total = sum(rec.get("pe", 0) for qs in scores.values() for rec in qs.values())
+        if pe_total:
+            print("注意：有 %d 筆「答案對但多印了說明文字」（例如 BMI = 55.56），每筆給 %g 成分數（--format-credit）。"
+                  % (pe_total, args.format_credit * 10))
         if reok_total:
             print("\n注意：有 %d 筆「輸出正確但程式印完之後才出錯」（常見於結尾多一個 input()），目前%s。"
                   % (reok_total, "算錯（--strict-output）" if args.strict_output else "算通過"))

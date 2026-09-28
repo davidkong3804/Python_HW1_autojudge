@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>自動批改 · Autojudge</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%232f6fed%22%2F%3E%3Cpath%20d%3D%22M9%2016.5l4.8%204.8L23%2012%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%223.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E">
-<link rel="stylesheet" href="assets/style.css?v=2.0">
+<link rel="stylesheet" href="assets/style.css?v=2.3">
 </head>
 <body>
 
@@ -29,6 +29,7 @@
     <div class="hwinfo-meta">
       <span><span class="muted">繳交格式</span> <code id="hwSubmission"></code></span>
       <span><span class="muted">配分</span> <span id="hwGrading"></span></span>
+      <a id="hwHandout" href="#" target="_blank" rel="noopener" hidden>題目定稿 PDF ↗</a>
     </div>
   </section>
 
@@ -96,38 +97,69 @@
   <!-- 步驟 3 -->
   <section class="card">
     <h2><span class="step">3</span>批改</h2>
-    <div class="row gap wrap-row">
+
+    <fieldset class="rules" id="rules">
+      <legend>評分標準 <span class="muted small">設定一次就好，全班用同一套；批改後再改會提醒重批</span></legend>
+
+      <div class="rule">
+        <div class="rule-q">答案對，但多印了說明文字或提示字
+          <span class="rule-eg">例：應輸出 <code>55.56</code>，同學印成 <code>BMI = 55.56</code></span></div>
+        <div class="seg" role="radiogroup" aria-label="答案對但多印了說明文字">
+          <label><input type="radio" name="formatCredit" value="0" checked><span>不給分</span></label>
+          <label><input type="radio" name="formatCredit" value="0.5"><span>給一半</span></label>
+          <label><input type="radio" name="formatCredit" value="1"><span>給全分</span></label>
+        </div>
+      </div>
+
+      <div class="rule">
+        <div class="rule-q">空白或大小寫不一樣
+          <span class="rule-eg">例：應輸出 <code>Weak</code>，同學印成 <code>weak</code> 或 <code>&nbsp;Weak</code>（行尾空白一律不算錯）</span></div>
+        <div class="seg" role="radiogroup" aria-label="空白或大小寫不一樣">
+          <label><input type="radio" name="compareMode" value="strict" checked><span>算錯</span></label>
+          <label><input type="radio" name="compareMode" value="trim"><span>空白不算錯</span></label>
+          <label><input type="radio" name="compareMode" value="loose"><span>空白、大小寫都不算錯</span></label>
+        </div>
+      </div>
+
+      <div class="rule">
+        <div class="rule-q">答案印對了，但程式最後才出錯
+          <span class="rule-eg">例：印完答案又多寫一行 <code>input('按 Enter 結束')</code></span></div>
+        <div class="seg" role="radiogroup" aria-label="答案印對了但程式最後才出錯">
+          <label><input type="radio" name="lenientRe" value="1" checked><span>給分</span></label>
+          <label><input type="radio" name="lenientRe" value="0"><span>不給分</span></label>
+        </div>
+      </div>
+
+      <details class="rules-adv">
+        <summary>更多設定（通常不用動）</summary>
+        <div class="rule">
+          <div class="rule-q">每筆測資最多跑幾秒
+            <span class="rule-eg">超過就算「執行逾時」。同學的程式很慢（例如質數一路試到 n）才需要調大</span></div>
+          <label class="opt"><input type="number" id="timeout" value="8" min="1" max="60" step="1"> 秒</label>
+        </div>
+        <div class="rule">
+          <div class="rule-q">一行的輸入，同學拆成好幾次 <code>input()</code> 讀
+            <span class="rule-eg">老師規定一行就是一次 <code>input()</code>，所以預設算錯。選「接受」會把那一行拆開重跑一次</span></div>
+          <div class="seg" role="radiogroup" aria-label="一行輸入拆成多次 input">
+            <label><input type="radio" name="lenientInput" value="0" checked><span>算錯（老師規定）</span></label>
+            <label><input type="radio" name="lenientInput" value="1"><span>接受</span></label>
+          </div>
+        </div>
+      </details>
+    </fieldset>
+
+    <div class="row gap wrap-row runrow">
       <button class="btn primary big" id="runAll" disabled>開始批改</button>
       <button class="btn danger" id="cancelRun" hidden>取消</button>
-      <button class="btn ghost" id="selfTest" title="用參考解答跑一次全部測資，應該拿滿分。結果只顯示在這裡，不會蓋掉成績表">先驗證參考解答</button>
+      <span class="grow"></span>
+      <button class="btn ghost small" id="selfTest" title="用參考解答跑一次全部測資，應該拿滿分。結果只顯示在這裡，不會蓋掉成績表">先驗證參考解答</button>
     </div>
+    <p id="rulesSummary" class="muted small rules-summary"></p>
     <p id="selfTestResult" class="selftest" hidden></p>
     <div id="progressBox" hidden>
       <div class="bar"><div id="bar"></div></div>
       <p id="progressText" class="muted small" aria-live="polite"></p>
     </div>
-
-    <details class="options">
-      <summary>批改選項 <span class="muted small">（預設就是老師規定的標準，通常不用動）</span></summary>
-      <div class="optgrid">
-        <label class="opt">單筆測資逾時
-          <input type="number" id="timeout" value="8" min="1" max="60" step="1"> 秒
-        </label>
-        <label class="opt">比對方式
-          <select id="compareMode">
-            <option value="strict" selected>嚴格（僅忽略行尾空白與結尾空行）</option>
-            <option value="trim">忽略每行前後空白</option>
-            <option value="loose">忽略所有空白與英文大小寫</option>
-          </select>
-        </label>
-        <label class="opt" title="例如印完答案後又寫 input('按 Enter 結束')，輸出其實是對的">
-          <input type="checkbox" id="lenientRe" checked> 只要輸出正確就給分（印完才出錯不扣）</label>
-        <label class="opt" title="老師規定一行就是一次 input()，所以預設關閉。打開後，把一行拆成多次 input() 讀的同學會改用逐行輸入重跑一次">
-          <input type="checkbox" id="lenientInput"> （非標準）相容「一行拆成多次 input()」</label>
-        <label class="opt" title="每題錯一筆就不跑剩下的，只適合快速看誰全對。跑出來的分數會偏低，不能拿來登記">
-          <input type="checkbox" id="stopOnFirst"> 快速篩檢（錯一筆就跳過該題其餘測資，<strong>分數不可登記</strong>）</label>
-      </div>
-    </details>
   </section>
 
   <!-- 結果 -->
@@ -146,6 +178,7 @@
         <option value="missing">未繳交</option>
         <option value="notroster">不在名單</option>
         <option value="dirty">需重批</option>
+        <option value="format">格式不符</option>
       </select>
       <span class="grow"></span>
       <button class="btn primary" id="exportCsv" title="每位學生一列：各題分數、總分、手動調整、寫法提示。Excel 可直接開">匯出成績 CSV</button>
@@ -245,7 +278,7 @@
 </footer>
 
 <script src="vendor/jszip/jszip.min.js"></script>
-<script src="data/assignments.js?v=2.0"></script>
-<script src="assets/app.js?v=2.0"></script>
+<script src="data/assignments.js?v=2.3"></script>
+<script src="assets/app.js?v=2.3"></script>
 </body>
 </html>

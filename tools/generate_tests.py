@@ -57,8 +57,10 @@ def build_manifest(hw_id):
         "subtitle": meta.get("subtitle", ""),
         "submission": meta.get("submission", ""),
         "grading": meta.get("grading", ""),
+        "handout": ("hw/%s/%s" % (hw_id, meta["handout"])) if meta.get("handout") else "",
         "problems": [],
     }
+    statements = getattr(spec, "STATEMENTS", {})
     sanity = getattr(spec, "sanity", None)
 
     for prob in spec.PROBLEMS:
@@ -90,6 +92,7 @@ def build_manifest(hw_id):
             "checks": list(prob.get("checks", [])),
             "requirement": prob.get("requirement", ""),
             "keywords": prob.get("keywords", ""),
+            "statement": statements.get(prob.get("group", qid), ""),
             "tests": tests,
         })
     return manifest

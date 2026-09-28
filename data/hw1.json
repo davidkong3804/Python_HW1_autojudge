@@ -4,6 +4,7 @@
  "subtitle": "BMI、計算機、質數、數字和、密碼強度、一元二次方程式",
  "submission": "學號_HW1.zip → 學號_HW1/q1.py ~ q6.py",
  "grading": "Q1~Q4 各 15 分、Q5~Q6 各 20 分，共 100 分；每題 5 組測資",
+ "handout": "",
  "problems": [
   {
    "id": "q1",
@@ -14,6 +15,7 @@
    "checks": [],
    "requirement": "",
    "keywords": "\\bbmi\\b",
+   "statement": "",
    "tests": [
     {
      "n": 1,
@@ -61,6 +63,7 @@
    "checks": [],
    "requirement": "",
    "keywords": "augend|minuend|divisor|dividend|calculator|計算機",
+   "statement": "",
    "tests": [
     {
      "n": 1,
@@ -108,6 +111,7 @@
    "checks": [],
    "requirement": "",
    "keywords": "\\bprime\\b|質數",
+   "statement": "",
    "tests": [
     {
      "n": 1,
@@ -155,6 +159,7 @@
    "checks": [],
    "requirement": "",
    "keywords": "sum\\s*of\\s*digits|數字和",
+   "statement": "",
    "tests": [
     {
      "n": 1,
@@ -202,6 +207,7 @@
    "checks": [],
    "requirement": "",
    "keywords": "password|weak|moderate|strong|密碼",
+   "statement": "",
    "tests": [
     {
      "n": 1,
@@ -249,6 +255,7 @@
    "checks": [],
    "requirement": "",
    "keywords": "root|quadratic|判別式|sqrt",
+   "statement": "",
    "tests": [
     {
      "n": 1,
