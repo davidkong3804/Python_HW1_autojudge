@@ -359,6 +359,9 @@ def collect(paths, workdir):
                 rel = os.path.relpath(full, base).replace("\\", "/")
                 if fn.lower().endswith(".py"):
                     take_file(disp_prefix + rel, full)
+                elif fn.lower().endswith(".ipynb"):
+                    # 老師規定：交 .ipynb 不幫忙轉檔，算錯（網頁版可以破例拆開）
+                    print("交的是 .ipynb，依規定算錯、不批改：%s" % (disp_prefix + rel))
                 elif fn.lower().endswith(".zip") and depth < 3:
                     expand_zip(full, disp_prefix + re.sub(r"\.zip$", "", rel, flags=re.I) + "/", depth + 1)
 
