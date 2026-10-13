@@ -20,6 +20,8 @@ jobs:
         run: python3 tools/verify_tests.py
       - name: 學號 / 題號辨識（含 app.js 交叉比對）
         run: python3 tools/test_detect.py
+      - name: a、b 寫在同一個檔案的拆分
+        run: python3 tools/test_split.py
       - name: 測資與配分設定（含 app.js 交叉比對）
         run: python3 tools/test_config.py
       - name: 抗壓測試（惡夢學生程式）
