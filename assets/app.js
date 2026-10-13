@@ -102,7 +102,7 @@
       var self = this;
       if (self.booting) return self.booting;
       self.booting = new Promise(function (resolve, reject) {
-        var w = new Worker('assets/worker.js?v=2.7');
+        var w = new Worker('assets/worker.js?v=2.8');
         self.worker = w;
         w.onmessage = function (ev) {
           var m = ev.data;
@@ -2895,13 +2895,28 @@
     rg.onclick = function () { gradeStudents([st]); };
     acts.appendChild(rg);
     var cp = el('button', 'btn ghost', '複製給這位學生的回饋');
+    cp.title = '純文字，貼到 COOL 評語、訊息、記事本';
     cp.onclick = function () {
       var row = scoreRows().filter(function (r) { return r.id === st; })[0];
       copyText(feedbackText(row), '回饋已複製，可以直接貼到 COOL 評語。');
     };
     acts.appendChild(cp);
+    var cps = el('button', 'btn ghost', '複製成一格（貼進試算表）');
+    cps.title = '貼到 Excel / Google 試算表用：整段回饋會落在同一個儲存格，不會被每一行拆成一列';
+    cps.onclick = function () {
+      var row = scoreRows().filter(function (r) { return r.id === st; })[0];
+      copyText(sheetCell(feedbackText(row)), '已複製，貼進試算表會落在同一格。');
+    };
+    acts.appendChild(cps);
     body.appendChild(acts);
     body.scrollTop = keepScroll;
+  }
+
+  /* 貼進 Excel / Google 試算表 / Numbers 時，多行文字如果沒有用雙引號包起來，每一行會被拆成一列，整個排版就亂了。
+     包成「一格」的文字（內部的雙引號要連寫兩個）貼上去才會落在同一個儲存格裡 */
+  function sheetCell(v) {
+    v = String(v === undefined || v === null ? '' : v);
+    return /[\t\n\r"]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
   }
 
   function copyText(text, okMsg) {
@@ -3069,6 +3084,13 @@
       }
     });
     return out.join('\n');
+  }
+
+  /* 全班一次貼進試算表：學號、姓名、總分、回饋 四欄（tab 分隔，回饋整段在同一格） */
+  function toFeedbackTsv() {
+    return scoreRows().sort(function (a, b) { return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; }).map(function (r) {
+      return [r.id, r.name, r.submitted ? r.total : 0, feedbackText(r)].map(sheetCell).join('\t');
+    }).join('\n');
   }
 
   function toFeedbackCsv() {
@@ -3654,6 +3676,10 @@
     $('exportCsv').onclick = function () {
       if (!S.results || !confirmExport()) return;
       download(HW_ID + '_成績.csv', toCsv(), 'text/csv');
+    };
+    $('copyFeedbackAll').onclick = function () {
+      if (!S.results || !confirmExport()) return;
+      copyText(toFeedbackTsv(), '已複製全班的學號、姓名、總分、回饋，到試算表按貼上就好。');
     };
     $('exportFeedback').onclick = function () {
       if (!S.results || !confirmExport()) return;

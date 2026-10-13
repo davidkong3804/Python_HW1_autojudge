@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>自動批改 · Autojudge</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%232f6fed%22%2F%3E%3Cpath%20d%3D%22M9%2016.5l4.8%204.8L23%2012%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%223.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E">
-<link rel="stylesheet" href="assets/style.css?v=2.7">
+<link rel="stylesheet" href="assets/style.css?v=2.8">
 </head>
 <body>
 
@@ -184,6 +184,7 @@
       <span class="grow"></span>
       <button class="btn primary" id="exportCsv" title="每位學生一列：各題分數、總分、手動調整、寫法提示。Excel 可直接開">匯出成績 CSV</button>
       <button class="btn" id="exportFeedback" title="每位學生一段文字：各題分數、錯在哪一筆、手動調整原因。可以貼到 COOL 評語">匯出回饋</button>
+      <button class="btn ghost" id="copyFeedbackAll" title="學號、姓名、總分、回饋四欄，直接貼進 Excel / Google 試算表（每位學生的回饋整段落在同一格，不會被拆成好幾列）">複製全班（貼進試算表）</button>
       <button class="btn ghost" id="exportJson" title="逐筆明細，留存備查或交給其他助教">明細 JSON</button>
     </div>
 
@@ -279,7 +280,7 @@
 </footer>
 
 <script src="vendor/jszip/jszip.min.js"></script>
-<script src="data/assignments.js?v=2.7"></script>
-<script src="assets/app.js?v=2.7"></script>
+<script src="data/assignments.js?v=2.8"></script>
+<script src="assets/app.js?v=2.8"></script>
 </body>
 </html>
