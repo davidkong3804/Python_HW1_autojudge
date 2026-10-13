@@ -102,7 +102,7 @@
       var self = this;
       if (self.booting) return self.booting;
       self.booting = new Promise(function (resolve, reject) {
-        var w = new Worker('assets/worker.js?v=2.9');
+        var w = new Worker('assets/worker.js?v=3.0');
         self.worker = w;
         w.onmessage = function (ev) {
           var m = ev.data;
@@ -172,8 +172,9 @@
       return job;
     },
 
-    run: function (code, stdin, timeoutMs) {
-      return this.send({ cmd: 'run', code: code, stdin: stdin }, timeoutMs, function () {
+    /* io：讀寫檔案的題目（testIO），每筆在乾淨的資料夾裡跑、先放好附的檔案；其他題目傳 null */
+    run: function (code, stdin, timeoutMs, io) {
+      return this.send({ cmd: 'run', code: code, stdin: stdin, io: io || null }, timeoutMs, function () {
         return {
           status: 'timeout', stdout: '', ms: timeoutMs,
           stderr: '執行超過時間限制（無窮迴圈，或程式還在等下一個 input()）'
@@ -869,7 +870,7 @@
     var tests = prob.tests.slice(0, 2);
     var tmo = Math.min(cfg.timeout, 3000);
     function level(code, t) {
-      return Engine.run(code, t.input + '\n', tmo).then(function (r) {
+      return Engine.run(code, t.input + '\n', tmo, testIO(prob, t)).then(function (r) {
         return r.status === 'ok' ? matchLevel(r.stdout, t.expected) : 0;
       });
     }
@@ -1638,6 +1639,19 @@
     return { version: CFG_VERSION, points: {}, disabled: {}, custom: {} };
   }
 
+  /* 自訂測資附的檔案 {檔名: 內容}：只收單純的檔名（不能有路徑），與 tools/grade_cli.py 的 clean_files 相同 */
+  function cleanFiles(raw) {
+    var out = {};
+    if (!raw || typeof raw !== 'object' || Object.prototype.toString.call(raw) === '[object Array]') return out;
+    Object.keys(raw).sort().forEach(function (name) {
+      var val = raw[name];
+      if (typeof val === 'string' && /^[^\/\\\x00:]{1,100}$/.test(name) && name !== '.' && name !== '..') {
+        out[name] = val;
+      }
+    });
+    return out;
+  }
+
   /* 匯入的東西可能是別人手改過的，一律當成不可信的資料驗過再用 */
   function sanitizeConfig(raw) {
     var out = emptyConfig();
@@ -1659,12 +1673,14 @@
         out.custom[q] = cus.filter(function (c) {
           return c && typeof c.input === 'string' && typeof c.expected === 'string';
         }).map(function (c) {
-          return {
+          var item = {
             input: String(c.input),
             expected: String(c.expected),
             note: String(c.note || '助教自訂測資'),
             enabled: c.enabled !== false
           };
+          if (base.fileMode) item.files = cleanFiles(c.files);
+          return item;
         });
       }
     });
@@ -1708,15 +1724,18 @@
       });
       customOf(p.id).forEach(function (c, i) {
         if (c.enabled === false) return;
-        tests.push({
+        var t = {
           n: 'C' + (i + 1), input: c.input, expected: c.expected,
           note: c.note, kind: 'custom'
-        });
+        };
+        if (p.fileMode) t.files = c.files || {};
+        tests.push(t);
       });
       var points = pointsOf(p.id);
       return {
         id: p.id, name: p.name, points: points, tests: tests,
         group: p.group || p.id, checks: p.checks || [], requirement: p.requirement || '',
+        fileMode: p.fileMode || '',
         pointsPerTest: tests.length ? points / tests.length : 0
       };
     });
@@ -1772,6 +1791,21 @@
     if (kind === 'custom') return '自訂測資';
     return '隨機測資';
   }
+  /* 這筆測資執行時要準備的檔案（HW3 Q2、Q3 這種讀寫檔案的題目）；其他題目回傳 null。
+     規則與 tools/hwlib.py 的 test_io 相同。 */
+  function testIO(prob, t) {
+    if (!prob || !prob.fileMode) return null;
+    return { files: (t && t.files) || {}, capture: prob.fileMode === 'write' };
+  }
+
+  /* 給人看的「輸入」：輸入那一行，加上這筆測資附的檔案內容 */
+  function ioShown(input, files) {
+    var names = files ? Object.keys(files).sort() : [];
+    if (!names.length) return input;
+    return input + names.map(function (name) {
+      return '\n\n【附的檔案 ' + name + '】\n' + files[name];
+    }).join('');
+  }
   /* --8<-- config:end */
 
   /* ------------------------------------------------------------------ */
@@ -1791,6 +1825,7 @@
       else if (c === 'def' && !has('def')) out.push('沒有定義函式（def）');
       else if (c === 'set' && !has('set')) out.push('沒有用到 set');
       else if (c === 'slice' && !has('slice')) out.push('沒有用到切片');
+      else if (c === 'try' && !has('try')) out.push('沒有用 try / except 處理例外');
       else if (c.indexOf('import:') === 0 && !has(c)) out.push('沒有 import ' + c.slice(7));
     });
     return out;
@@ -1798,10 +1833,10 @@
 
   /* 用參考解答算出某筆輸入的正確輸出——助教不需要自己手打答案。
      這和 tools/generate_tests.py 的做法一致：答案一律由實際執行參考解答產生。 */
-  function solveWithReference(qid, input) {
+  function solveWithReference(qid, input, files) {
     var code = SOLUTIONS[qid];
     if (!code) return Promise.reject(new Error('找不到 ' + qLabel(qid) + ' 的參考解答'));
-    return Engine.run(code, input + '\n', 15000).then(function (r) {
+    return Engine.run(code, input + '\n', 15000, testIO(problemOf(qid), { files: files || {} })).then(function (r) {
       if (r.status === 'timeout') throw new Error('參考解答執行逾時，這筆輸入可能不合法');
       if (r.status !== 'ok') {
         throw new Error('參考解答跑這筆輸入會出錯，請檢查格式：\n' + (r.stderr || '').slice(0, 300));
@@ -2003,12 +2038,12 @@
               done++;
               return;
             }
-            return Engine.run(sub.code, t.input + '\n', cfg.timeout).then(function (r) {
+            return Engine.run(sub.code, t.input + '\n', cfg.timeout, testIO(prob, t)).then(function (r) {
               // 讀到 EOF（同學一個值一個 input()）-> 換成逐行輸入再給一次機會
               var alt = altInput(t.input);
               // 不只 EOF：float("1.75 68") 這種也是「他一個值一個 input() 讀」造成的
               if (cfg.lenientInput && r.status === 'error' && alt) {
-                return Engine.run(sub.code, alt + '\n', cfg.timeout).then(function (r2) {
+                return Engine.run(sub.code, alt + '\n', cfg.timeout, testIO(prob, t)).then(function (r2) {
                   if (normalize(r2.stdout, cfg.mode) === normalize(t.expected, cfg.mode)) {
                     r2.viaAlt = true;
                     return r2;
@@ -2041,7 +2076,8 @@
               rec.cases.push({
                 n: t.n, status: status, input: r.viaAlt ? alt2text(t.input) : t.input,
                 expected: t.expected, actual: cut(r.stdout, 3000), stderr: cut(r.stderr, 1500),
-                note: t.note, kind: t.kind, ms: r.ms, viaAlt: !!r.viaAlt, pass: passed
+                note: t.note, kind: t.kind, ms: r.ms, viaAlt: !!r.viaAlt, pass: passed,
+                files: prob.fileMode ? (t.files || {}) : undefined
               });
               done++;
               progress(sub);
@@ -2170,7 +2206,7 @@
             var two = Promise.resolve();
             p.tests.slice(0, 2).forEach(function (t) {
               two = two.then(function () {
-                return Engine.run(sub.code, t.input + '\n', cfg.timeout).then(function (r) {
+                return Engine.run(sub.code, t.input + '\n', cfg.timeout, testIO(p, t)).then(function (r) {
                   if (r.status === 'ok' && (normalize(r.stdout, cfg.mode) === normalize(t.expected, cfg.mode) ||
                       answerInside(r.stdout, t.expected, cfg.mode))) hit++;
                   done++;
@@ -2890,7 +2926,7 @@
         var grid = el('div', 'grid2');
         var a = el('div'), b = el('div');
         a.appendChild(el('span', 'lbl', '輸入'));
-        a.appendChild(el('pre', '', c.input));
+        a.appendChild(el('pre', '', ioShown(c.input, c.files)));
         b.appendChild(el('span', 'lbl', '應該輸出'));
         b.appendChild(el('pre', '', c.expected));
         grid.appendChild(a); grid.appendChild(b);
@@ -3203,7 +3239,7 @@
       var k = el('td');
       k.appendChild(el('span', 'kind ' + t.kind, kindLabel(t.kind)));
       tr.appendChild(k);
-      var i = el('td'); i.appendChild(el('code', 'io', t.input)); tr.appendChild(i);
+      var i = el('td'); i.appendChild(el('code', 'io', ioShown(t.input, t.files))); tr.appendChild(i);
       var o = el('td'); o.appendChild(el('code', 'io', t.expected)); tr.appendChild(o);
       tr.appendChild(el('td', 'muted small', t.note));
       tb.appendChild(tr);
@@ -3230,7 +3266,7 @@
         '（' + p.points + ' 分，每組 ' + round2(p.pointsPerTest) + ' 分）===');
       p.tests.forEach(function (t) {
         out.push('--- #' + t.n + ' [' + t.kind + '] ' + t.note);
-        out.push('input : ' + t.input.replace(/\n/g, '\n        '));
+        out.push('input : ' + ioShown(t.input, t.files).replace(/\n/g, '\n        '));
         out.push('output: ' + t.expected.replace(/\n/g, '\n        '));
       });
       out.push('');
@@ -3244,8 +3280,35 @@
   var cfgDraft = {};            // qid -> 正在編輯、還沒加進去的自訂測資
 
   function draftOf(qid) {
-    if (!cfgDraft[qid]) cfgDraft[qid] = { input: '', note: '', expected: null };
+    if (!cfgDraft[qid]) cfgDraft[qid] = { input: '', note: '', expected: null, filesText: '' };
     return cfgDraft[qid];
+  }
+
+  /* 自訂測資附的檔案：一個檔案一段，「=== 檔名 ===」開頭，下面是內容。回傳 {檔名: 內容}，格式不對丟錯誤 */
+  function parseFilesText(text) {
+    var out = {}, name = null, buf = [];
+    var lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+    function flush() {
+      if (name === null) return;
+      out[name] = buf.join('\n').replace(/\n+$/, '');
+    }
+    lines.forEach(function (line) {
+      var m = /^===\s*(.+?)\s*===\s*$/.exec(line);
+      if (m) {
+        flush();
+        name = m[1];
+        buf = [];
+        if (!/^[^\/\\\x00:]{1,100}$/.test(name) || name === '.' || name === '..') {
+          throw new Error('檔名「' + name + '」不行：只能是單純的檔名，不能有路徑');
+        }
+      } else if (name === null) {
+        if (line.trim()) throw new Error('第一行要是「=== 檔名 ===」，例如 === score.txt ===');
+      } else {
+        buf.push(line);
+      }
+    });
+    flush();
+    return out;
   }
 
   function cfgChanged() {
@@ -3395,7 +3458,7 @@
 
     box.appendChild(el('p', 'muted small', '內建測資（取消勾選就不列入這次批改）'));
     base.tests.forEach(function (t) {
-      box.appendChild(testRow(t.n, t.kind, t.input, t.expected, t.note, builtinOn(qid, t.n),
+      box.appendChild(testRow(t.n, t.kind, ioShown(t.input, t.files), t.expected, t.note, builtinOn(qid, t.n),
         function (on) {
           var off = CFG.disabled[qid] || [];
           if (on) off = off.filter(function (x) { return x !== t.n; });
@@ -3409,7 +3472,7 @@
     if (cus.length) {
       box.appendChild(el('p', 'muted small', '助教自訂測資'));
       cus.forEach(function (c, idx) {
-        box.appendChild(testRow('C' + (idx + 1), 'custom', c.input, c.expected, c.note,
+        box.appendChild(testRow('C' + (idx + 1), 'custom', ioShown(c.input, c.files), c.expected, c.note,
           c.enabled !== false,
           function (on) { c.enabled = on; cfgChanged(); },
           function () {
@@ -3434,6 +3497,23 @@
     ta.setAttribute('aria-label', '自訂測資輸入');
     ta.oninput = function () { draft.input = ta.value; draft.expected = null; renderPreview(); };
     add.appendChild(ta);
+
+    /* 讀寫檔案的題目：另外填這組測資要附的檔案 */
+    var filesTa = null;
+    if (base.fileMode) {
+      add.appendChild(el('p', 'muted small',
+        '這題會讀' + (base.fileMode === 'write' ? '寫' : '') + '檔案。下面填這組測資要附的檔案，每個檔案用「=== 檔名 ===」開頭；' +
+        '要測「檔案不存在」就留空。' + (base.fileMode === 'write' ? '程式寫出來的檔案內容會接在正確輸出的「=== 檔名 ===」後面。' : '')));
+      filesTa = el('textarea');
+      filesTa.rows = 5;
+      var ex = base.tests.filter(function (t) { return t.files && Object.keys(t.files).length; })[0];
+      var exName = ex ? Object.keys(ex.files).sort()[0] : 'data.txt';
+      filesTa.placeholder = '=== ' + exName + ' ===\n' + (ex ? ex.files[exName].split('\n').slice(0, 3).join('\n') : '');
+      filesTa.value = draft.filesText || '';
+      filesTa.setAttribute('aria-label', '自訂測資附的檔案');
+      filesTa.oninput = function () { draft.filesText = filesTa.value; draft.expected = null; renderPreview(); };
+      add.appendChild(filesTa);
+    }
 
     var noteIn = el('input');
     noteIn.type = 'text';
@@ -3465,11 +3545,18 @@
     calcBtn.onclick = function () {
       var input = ta.value.replace(/\s+$/, '');
       if (!input) { toast('請先填輸入。', 'warn'); ta.focus(); return; }
+      var files = null;
+      if (filesTa) {
+        try { files = parseFilesText(filesTa.value); } catch (e) {
+          toast(e.message, 'warn'); filesTa.focus(); return;
+        }
+      }
       calcBtn.disabled = true;
       calcBtn.textContent = RUN ? '等批改的空檔執行…' : '執行參考解答中…';
       ensureEngine().catch(function () {});
-      solveWithReference(qid, input).then(function (expected) {
+      solveWithReference(qid, input, files).then(function (expected) {
         draft.input = input;
+        draft.files = files;
         draft.expected = expected;
         renderPreview();
       }).catch(function (e) {
@@ -3485,14 +3572,16 @@
     addBtn.onclick = function () {
       if (draft.expected === null) return;
       var list = CFG.custom[qid] || [];
-      list.push({
+      var item = {
         input: draft.input,
         expected: draft.expected,
         note: draft.note || '助教自訂測資',
         enabled: true
-      });
+      };
+      if (base.fileMode) item.files = draft.files || {};
+      list.push(item);
       CFG.custom[qid] = list;
-      cfgDraft[qid] = { input: '', note: '', expected: null };
+      cfgDraft[qid] = { input: '', note: '', expected: null, filesText: '' };
       cfgChanged();
       toast('已加入 ' + qLabel(qid) + ' 的自訂測資。', 'ok');
     };

@@ -77,6 +77,58 @@ CASES = [
 ]
 
 
+# HW3 Q2（讀寫檔案）：每筆測資要在乾淨的資料夾裡跑，前一位同學留下的檔案不能影響下一位
+Q2_REF = open(os.path.join(ROOT, "hw", "hw3", "solutions", "q2.py"), encoding="utf-8").read() \
+    if os.path.isfile(os.path.join(ROOT, "hw", "hw3", "solutions", "q2.py")) else ""
+CASES_IO = [
+    ("io_good", Q2_REF, 25, "參考解答"),
+    ("io_chdir", "import os\nos.chdir('..')\n" + Q2_REF, 0,
+     "跑之前先 chdir 到上一層（檔案寫到別的地方，不能把批改弄壞）"),
+    ("io_huge", Q2_REF + "\nopen('huge.txt', 'w').write('x' * 10**7)\n", 0,
+     "多寫一個 10 MB 的檔案（只讀前面一段，不會把記憶體吃光）"),
+    ("io_litter", "open('result_neg.txt','w').write('-19')\nopen('half_out.txt','w').write('3.5')\n"
+                  "import os\nos.makedirs('sub', exist_ok=True)\nprint(input())\n", 0,
+     "不算、直接把答案檔亂寫一通（後面的同學不可以撿到這些檔案）"),
+    ("io_delete_input", Q2_REF.replace('        parts = fin.read().split()',
+                                       '        parts = fin.read().split()\n    import os\n    os.remove(in_name)'), 25,
+     "讀完把輸入檔刪掉（題目給的檔案不見了不算錯）"),
+]
+
+
+def stress_io(work):
+    """HW3 Q2 的檔案讀寫：一批惡夢程式後面接一位正確的同學，他必須拿滿分。"""
+    if not Q2_REF:
+        return True
+    base = os.path.join(work, "io_submissions")
+    for name, code, _expect, _desc in CASES_IO + [("zzz_io_victim", Q2_REF, 25, "")]:
+        d = os.path.join(base, name + "_HW3")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "q2.py"), "w", encoding="utf-8") as fh:
+            fh.write(code)
+    out_csv = os.path.join(work, "io_scores.csv")
+    proc = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "grade_cli.py"), base,
+                           "--hw", "hw3", "-o", out_csv, "--timeout", "5"], capture_output=True, text=True)
+    if proc.returncode:
+        print(proc.stdout, proc.stderr[-2000:])
+        return False
+    scores = {}
+    with open(out_csv, encoding="utf-8-sig") as fh:
+        next(fh)
+        for line in fh:
+            cols = line.rstrip("\n").split(",")
+            scores[cols[0].lower()] = cols
+    ok = True
+    print("\nHW3 Q2 讀寫檔案")
+    print("-" * 72)
+    for name, _code, expect, desc in CASES_IO + [("zzz_io_victim", "", 25, "排在最後的正確解答（不能撿到前面留下的檔案）")]:
+        row = scores.get(name.lower())
+        got = float(row[2]) if row and row[2] else 0.0
+        good = abs(got - expect) < 1e-9
+        ok = ok and good
+        print("%-16s %-6g %-6s %s %s" % (name, got, expect, desc, "" if good else "  <== 不符預期"))
+    return ok
+
+
 def main():
     work = tempfile.mkdtemp(prefix="autojudge_stress_")
     victim = None
@@ -127,6 +179,7 @@ def main():
         print("被污染者測試：正確解答排在竄改 builtins 的人後面 -> Q1=%g Q6=%g %s"
               % (vic_q1, vic_q6, "OK" if vic_ok else "<== 被污染了！"))
 
+        ok = stress_io(work) and ok
         print("\n" + ("全部通過：批改程式扛得住。" if ok else "有項目不符預期，請檢查上面標記的那幾行。"))
         return 0 if ok else 1
     finally:

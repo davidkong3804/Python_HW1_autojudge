@@ -81,6 +81,23 @@ CASES_HW2 = [
 ]
 
 
+# HW3：讀寫檔案的題目，自訂測資要帶著附的檔案；檔名有路徑的要被丟掉
+CUSTOM_Q3 = {"input": "mine.txt", "expected": "42,60", "note": "助教自訂",
+             "files": {"mine.txt": "2\n41 10 10 10\n42 20 20 20"}}
+CASES_HW3 = [
+    ("HW3 原廠設定", {}, {"q1": (25, 10), "q2": (25, 10), "q3": (25, 10), "q4": (25, 10)}),
+    ("HW3 Q3 加一組附檔案的自訂測資",
+     {"custom": {"q3": [CUSTOM_Q3]}},
+     {"q1": (25, 10), "q2": (25, 10), "q3": (25, 11), "q4": (25, 10)}),
+    ("HW3 自訂測資的檔名有路徑、內容不是字串：那個檔案要被丟掉",
+     {"custom": {"q2": [{"input": "a.txt,b.txt", "expected": "File not found", "note": "x",
+                         "files": {"../evil.txt": "x", "ok.txt": "1 + 1", "bad.txt": 5, "c:d.txt": "x"}}],
+                 "q1": [{"input": "1 2", "expected": "2", "files": {"x.txt": "y"}}]},
+      "disabled": {"q4": [1, 2]}},
+     {"q1": (25, 11), "q2": (25, 11), "q3": (25, 10), "q4": (25, 8)}),
+]
+
+
 def load_manifest(hw_id="hw1"):
     return hwlib.load_manifest(hw_id)
 
@@ -99,13 +116,21 @@ def py_apply(manifest, cfg):
     return [shape(p) for p in m["problems"]]
 
 
+def files_sig(files):
+    """測資附的檔案（HW3 Q2、Q3）：兩邊都要帶同一批檔案，排序後接成一串比對。"""
+    if files is None:
+        return "-"
+    return "\u0002".join("%s=%s" % (k, files[k]) for k in sorted(files))
+
+
 def shape(prob):
     return {
         "id": prob["id"],
         "points": round(float(prob["points"]), 4),
         "tests": len(prob["tests"]),
         "pointsPerTest": round(float(prob["pointsPerTest"]), 4),
-        "sig": "\u0001".join("%s|%s|%s" % (t["n"], t["input"], t["expected"])
+        "sig": "\u0001".join("%s|%s|%s|%s" % (t["n"], t["input"], t["expected"],
+                                               files_sig(t.get("files")))
                              for t in prob["tests"]),
     }
 
@@ -140,7 +165,8 @@ console.log(JSON.stringify(configs.map(function (sc) {
       id: p.id, points: r4(p.points), tests: p.tests.length,
       pointsPerTest: r4(p.pointsPerTest),
       sig: p.tests.map(function (t) {
-        return t.n + '|' + t.input + '|' + t.expected;
+        var f = t.files ? Object.keys(t.files).sort().map(function (k) { return k + '=' + t.files[k]; }).join('\\u0002') : '-';
+        return t.n + '|' + t.input + '|' + t.expected + '|' + f;
       }).join('\\u0001')
     };
   });
@@ -227,6 +253,12 @@ def main():
         print("=" * 72)
         run_cases(load_manifest("hw2"), CASES_HW2, failures)
         check_hw_mismatch(failures)
+        print()
+    if "hw3" in hwlib.list_hws():
+        print("=" * 72)
+        print("HW3（讀寫檔案的題目，自訂測資附檔案）")
+        print("=" * 72)
+        run_cases(load_manifest("hw3"), CASES_HW3, failures)
         print()
     print("=" * 72)
     print("測資與配分設定（配分模型：題目總分固定，啟用中的測資平分）")

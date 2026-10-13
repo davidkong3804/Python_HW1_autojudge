@@ -191,6 +191,7 @@ FEATURE_CASES = [
     ("def f(a):\n    return set(a)\n", ["def", "set"]),
     ("s = {1, 2}\n", ["set"]),
     ("from datetime import datetime\nimport os.path\n", ["import:datetime", "import:os"]),
+    ("try:\n    f = open('a.txt')\nexcept FileNotFoundError:\n    pass\n", ["try"]),
     ("print('unclosed\n", None),
 ]
 
@@ -245,6 +246,8 @@ def check_features():
         (["while", "def"], ["for", "def"], ["沒有用到 while 迴圈"]),
         (["import:datetime"], [], ["沒有 import datetime"]),
         (["loop"], None, []),
+        (["try"], ["def"], ["沒有用 try / except 處理例外"]),
+        (["try"], ["try"], []),
     ]
     for chk, feats, want in checks:
         got = grade_cli.check_violations(chk, feats)

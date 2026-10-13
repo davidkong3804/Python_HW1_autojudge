@@ -8,6 +8,7 @@
  *   - 學生改 builtins 或改 math 模組  -> 每跑完一筆就還原，不會污染下一位同學
  *   - 學生用 __file__ / sys.exit()    -> 都給它，行為跟真的 python 一樣
  *   - 無窮迴圈                        -> 由主執行緒 terminate() 這個 worker（TLE）
+ *   - 讀寫檔案的題目                  -> 每筆測資在乾淨的 /tmp/autojudge_run 裡跑，跑完把產生的檔案接在輸出後面
  *
  * 另外提供 features：用 ast 靜態分析程式寫法（有沒有迴圈、函式、set…），
  * 給「寫法要求」提示用。只 parse、不執行。
@@ -67,6 +68,66 @@ class _Writer:
     def getvalue(self):
         return ''.join(self._parts)
 
+# --8<-- fileio:start（tools/hwlib.py、tools/grade_cli.py 用同一段程式）
+# 讀寫檔案的題目（HW3 Q2、Q3）：每筆測資在一個乾淨的資料夾裡跑，
+# 先放好這筆測資附的檔案，跑完再把「新產生 / 被改過」的檔案內容接在螢幕輸出後面一起比對。
+FILE_CAP = 20000
+
+
+def _io_write_files(base, files):
+    import os
+    for name, content in sorted((files or {}).items()):
+        with open(os.path.join(base, name), 'w', encoding='utf-8', newline='') as fh:
+            fh.write(content)
+
+
+def _io_collect(base, files):
+    """跑完之後資料夾裡新產生、或內容被改過的檔案 -> [(檔名, 內容)]，依檔名排序。"""
+    import os
+    files = files or {}
+    out = []
+    try:
+        names = sorted(os.listdir(base))
+    except OSError:
+        return out
+    for name in names:
+        path = os.path.join(base, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, 'rb') as fh:
+                raw = fh.read(FILE_CAP + 1)
+        except OSError:
+            continue
+        text = raw.decode('utf-8', errors='replace')
+        if name in files and text == files[name]:
+            continue                     # 題目給的檔案，原封不動
+        out.append((name, text))
+    return out
+
+
+def _io_compose(stdout, produced):
+    """螢幕輸出 + 產生的檔案內容 -> 一段文字（網頁、命令列、產生測資都用這個格式）：
+        Successfully
+        Execution completed
+        === out1.txt ===
+        5
+    空檔案寫成「=== out3.txt（空檔案）===」。"""
+    text = stdout
+    for name, content in produced:
+        body = content.replace('\r\n', '\n').replace('\r', '\n')
+        while body[:1] == '﻿':
+            body = body[1:]
+        if len(body) > FILE_CAP:
+            body = body[:FILE_CAP] + '\n…（檔案太長，只顯示前面 %d 個字元）' % FILE_CAP
+        body = body.rstrip('\n')
+        head = '=== %s ===' % name if body.strip() else '=== %s（空檔案）===' % name
+        text = text.rstrip('\n')
+        text = (text + '\n' if text else '') + head + ('\n' + body if body.strip() else '')
+    return text
+# --8<-- fileio:end
+
+
 _BUILTIN_SNAPSHOT = dict(builtins.__dict__)
 _MODULE_SNAPSHOT = set(sys.modules)
 _RECURSION_LIMIT = sys.getrecursionlimit()
@@ -93,7 +154,17 @@ def _clean_source(code):
     return code
 
 
-def _run(code, stdin_text):
+def _run(code, stdin_text, io_json=''):
+    import os, shutil
+    io_spec = json.loads(io_json) if io_json else None
+    home = os.getcwd()
+    box = None
+    if io_spec is not None:
+        box = '/tmp/autojudge_run'
+        shutil.rmtree(box, ignore_errors=True)
+        os.makedirs(box)
+        _io_write_files(box, io_spec.get('files'))
+        os.chdir(box)
     lines = stdin_text.split('\n')
     if lines and lines[-1] == '':
         lines.pop()
@@ -141,6 +212,14 @@ def _run(code, stdin_text):
             pass
 
     stdout_text = out.getvalue()
+    if box is not None:
+        try:
+            os.chdir(home)
+        except Exception:
+            pass
+        if io_spec.get('capture'):
+            stdout_text = _io_compose(stdout_text, _io_collect(box, io_spec.get('files')))
+        shutil.rmtree(box, ignore_errors=True)
     stderr_text = err.getvalue() + tb
     truncated = False
     if len(stdout_text) > RETURN_CAP:
@@ -154,7 +233,7 @@ def _run(code, stdin_text):
 
 # --8<-- features:start（tools/grade_cli.py 用同一段程式，tools/test_detect.py 對拍）
 def _features(code):
-    """靜態分析寫法：回傳 ['for', 'while', 'comp', 'def', 'set', 'slice', 'import:x'...]。
+    """靜態分析寫法：回傳 ['for', 'while', 'comp', 'def', 'set', 'slice', 'try', 'import:x'...]。
     語法錯誤回傳 None（沒辦法判斷，不要亂標）。"""
     import ast
     try:
@@ -180,6 +259,8 @@ def _features(code):
             found.add('set')
         elif isinstance(node, ast.Slice):
             found.add('slice')
+        elif isinstance(node, ast.Try) or type(node).__name__ == 'TryStar':
+            found.add('try')
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 found.add('import:' + alias.name.split('.')[0])
@@ -765,7 +846,7 @@ self.onmessage = async (ev) => {
   if (msg.cmd === 'run') {
     const started = Date.now();
     try {
-      const res = JSON.parse(runner(msg.code, msg.stdin));
+      const res = JSON.parse(runner(msg.code, msg.stdin, msg.io ? JSON.stringify(msg.io) : ''));
       res.type = 'result';
       res.id = msg.id;
       res.ms = Date.now() - started;

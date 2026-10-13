@@ -107,10 +107,13 @@ def apply_config(manifest, path):
                 continue
             if not isinstance(c.get("input"), str) or not isinstance(c.get("expected"), str):
                 continue
-            prob["tests"].append({
+            test = {
                 "n": "C%d" % (i + 1), "input": c["input"], "expected": c["expected"],
                 "note": str(c.get("note") or "助教自訂測資"), "kind": "custom",
-            })
+            }
+            if prob.get("fileMode"):
+                test["files"] = clean_files(c.get("files"))
+            prob["tests"].append(test)
             added += 1
         if added:
             notes.append("%s 自訂 %d 組" % (qid.upper(), added))
@@ -121,6 +124,19 @@ def apply_config(manifest, path):
             notes.append("警告：%s 沒有任何啟用中的測資，這一題永遠是 0 分" % qid.upper())
         del base_n
     return notes
+
+
+def clean_files(raw):
+    """自訂測資附的檔案 {檔名: 內容}：只收單純的檔名（不能有路徑），與 assets/app.js 的 cleanFiles 相同。"""
+    out = {}
+    if not isinstance(raw, dict):
+        return out
+    for name in sorted(raw):
+        val = raw[name]
+        if isinstance(name, str) and isinstance(val, str) and re.fullmatch(r"[^/\\\x00:]{1,100}", name) \
+                and name not in (".", ".."):
+            out[name] = val
+    return out
 
 
 def normalize(text, mode="strict"):
@@ -494,7 +510,7 @@ def siblings_of(qid, hint, qids):
 CHECK_TEXT = {
     "loop": "沒有用到迴圈", "for": "沒有用到 for 迴圈", "while": "沒有用到 while 迴圈",
     "no-loop": "用了迴圈（這題規定不能用）", "def": "沒有定義函式（def）",
-    "set": "沒有用到 set", "slice": "沒有用到切片",
+    "set": "沒有用到 set", "slice": "沒有用到切片", "try": "沒有用 try / except 處理例外",
 }
 
 
@@ -514,7 +530,7 @@ def check_violations(checks, features):
             out.append(CHECK_TEXT[c])
         elif c == "no-loop" and loop:
             out.append(CHECK_TEXT[c])
-        elif c in ("def", "set", "slice") and c not in has:
+        elif c in ("def", "set", "slice", "try") and c not in has:
             out.append(CHECK_TEXT[c])
         elif c.startswith("import:") and c not in has:
             out.append("沒有 import " + c[7:])
@@ -532,12 +548,25 @@ def _child_setup():
         pass
 
 
-def run_one(code, stdin_text, timeout, workdir):
+def run_one(code, stdin_text, timeout, workdir, io=None):
+    """io：讀寫檔案的題目（hwlib.test_io），每筆在一個乾淨的資料夾裡跑、先放好檔案，
+    io["capture"] 為真就把跑完產生的檔案接在輸出後面（格式與網頁版相同）。"""
+    out, err, st = _run_one(code, stdin_text, timeout, workdir, io)
+    if io is not None and io.get("capture") and st != "tle":
+        out = hwlib.io_compose(out, hwlib.io_collect(os.path.join(workdir, "cwd"), io.get("files")))
+    return out, err, st
+
+
+def _run_one(code, stdin_text, timeout, workdir, io):
     path = os.path.join(workdir, "student_run.py")
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(code)
     sandbox = os.path.join(workdir, "cwd")
+    if io is not None:
+        shutil.rmtree(sandbox, ignore_errors=True)
     os.makedirs(sandbox, exist_ok=True)
+    if io is not None:
+        hwlib.io_write_files(sandbox, io.get("files"))
     proc = subprocess.Popen(
         # -I -S：不載入 site-packages，跟網頁版一樣「只有標準函式庫」，
         # 免得同一份作業在網頁 0 分、在 CLI 卻因為助教電腦裝了 numpy 而滿分
@@ -650,10 +679,12 @@ def main():
                 return out
             sibs = siblings_of(qid, plan.get("hint"), qids)
             if len(sibs) >= 2 and plan["cands"] and problems[sibs[0]]["tests"]:
-                tests = [(t["input"], t["expected"]) for t in problems[sibs[0]]["tests"][:2]]
+                first = problems[sibs[0]]
+                tests = [(t["input"], t["expected"]) for t in first["tests"][:2]]
+                ios = dict((t["input"], hwlib.test_io(first, t)) for t in first["tests"][:2])
 
                 def run(c, inp):
-                    out_, _err, st = run_one(c, inp + "\n", min(args.timeout, 3), workdir)
+                    out_, _err, st = run_one(c, inp + "\n", min(args.timeout, 3), workdir, ios.get(inp))
                     return st == "ok", out_
                 hit = split_pick(plan["cands"], tests, run, code)
                 if hit:
@@ -687,10 +718,11 @@ def main():
                     continue
                 shown_input = t["input"]
                 via_alt = False
-                out, err, st = run_one(code, t["input"] + "\n", args.timeout, workdir)
+                io = hwlib.test_io(prob, t)
+                out, err, st = run_one(code, t["input"] + "\n", args.timeout, workdir, io)
                 alt = alt_input(t["input"])
                 if st in ("eof", "re") and alt and args.lenient_input:
-                    out2, err2, st2 = run_one(code, alt + "\n", args.timeout, workdir)
+                    out2, err2, st2 = run_one(code, alt + "\n", args.timeout, workdir, io)
                     if normalize(out2, args.mode) == normalize(t["expected"], args.mode):
                         out, err, st = out2, err2, st2
                         shown_input, via_alt = alt, True

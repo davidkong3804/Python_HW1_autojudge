@@ -15,8 +15,9 @@
 |---|---|---|---|
 | HW1 | BMI、計算機、質數、數字和、密碼強度、一元二次方程式 | Q1~Q4 各 15、Q5~Q6 各 20；每題 5 組測資 | `學號_HW1/q1.py ~ q6.py` |
 | HW2 | 反轉單字、質數產生器、去除重複、共同元素、二進位轉十進位、日期計算（[定稿](hw/hw2/handout.pdf)） | Q1~Q4 各 20（a、b 子題各 10）、Q5~Q6 各 10；每個子題 5 組測資 | `學號_HW2/q1a.py、q1b.py … q4b.py、q5.py、q6.py` |
+| HW3 | 組合數 C(n, k)、讀寫檔案的計算機、讀檔找最高總分、數列的第 y 個數（[定稿](hw/hw3/handout.pdf)） | Q1~Q4 各 25；每題 **10 組**測資、每組 2.5 分 | `學號_HW3/q1.py ~ q4.py` |
 
-新增 HW3 看 [`hw/README.md`](hw/README.md)：放一個資料夾、跑兩行指令，網頁上就會多一個 HW3，不用改網頁程式。
+新增 HW4 看 [`hw/README.md`](hw/README.md)：放一個資料夾、跑兩行指令，網頁上就會多一個 HW4，不用改網頁程式。
 
 ---
 
@@ -105,9 +106,30 @@ Python 環境直接從硬碟讀，**約三秒、完全不用網路**，測資也
 
 > 步驟 3「進階設定」裡可以改成接受，打開後會把那一行拆成逐行輸入重跑一次。除非老師改口，否則不要打開。
 
+### 讀寫檔案的題目（HW3 Q2、Q3）
+
+題目給的是檔名（`score.txt`、`HW3-2-1.txt,out1.txt`），程式要自己開檔。批改時：
+
+* 每一筆測資都在一個**全新的空資料夾**裡跑，先把這筆測資附的檔案放進去，程式的工作目錄就是那個資料夾
+  （同學用 `open('score.txt')` 這種相對路徑就讀得到；前一位同學留下的檔案不會被下一位撿到）
+* Q2 跑完之後，資料夾裡**新產生或被改過的檔案**會接在螢幕輸出後面一起比對，格式是：
+
+  ```
+  Successfully
+  Execution completed
+  === out1.txt ===
+  5
+  ```
+
+  輸出檔是空的寫成 `=== out3.txt（空檔案）===`；沒有產生輸出檔就不會有這一行（依定稿 Example 3，出錯時也要產生空的輸出檔，所以算錯）。
+  多寫了題目沒要的檔案也會出現在這裡，會算錯——看細節就知道是哪個檔案，需要的話用「改判對」
+* 細節裡的「輸入」會一起列出附的檔案內容（`【附的檔案 score.txt】`），測資一覽、`hw/hw3/tests/README.md` 也看得到；
+  實際的檔案在 `hw/hw3/tests/q2/NN.files/`
+* 「測資與配分設定」新增自訂測資時，這兩題多一個框填附的檔案（`=== 檔名 ===` 開頭，下面是內容；要測「檔案不存在」就留空）
+
 ### 寫法要求（HW2 起）
 
-HW2 每題規定寫法（a 用迴圈、b 只用切片；用 for / while；要定義函式；用 set；用 datetime），
+HW2 每題規定寫法（a 用迴圈、b 只用切片；用 for / while；要定義函式；用 set；用 datetime），HW3 也有（Q1 用 factorial 函式＋迴圈、Q2 用 try / except、Q4 用迴圈），
 這種要求測資測不出來。平台會用 Python `ast` 靜態分析（只分析、不執行），不符合的標 ⚑ 提示。
 **不會自動扣分**：靜態分析會有誤判（例如用了遞迴而不是迴圈），最後由助教看程式碼決定，
 需要扣分就在細節裡「手動調整」並寫原因，原因會寫進成績 CSV 和回饋。
@@ -297,7 +319,8 @@ python3 tools/grade_cli.py 繳交資料夾/ --config 設定.json  # 套用網頁
 
 測資慣例（HW1 定版，之後的作業沿用）：每題（子題）5 組手工挑選的特殊測資，預期輸出一律**實際執行參考解答**產生，
 不採用作業 PDF 上的範例（學生手上已經有，沒有鑑別度），也不放隨機測資——只有 5 組額度，每一組都要換到一個明確的鑑別點。
-每一組在測什麼，看 [`hw/hw1/tests/README.md`](hw/hw1/tests/README.md)、[`hw/hw2/tests/README.md`](hw/hw2/tests/README.md)。
+每一組在測什麼，看 [`hw/hw1/tests/README.md`](hw/hw1/tests/README.md)、[`hw/hw2/tests/README.md`](hw/hw2/tests/README.md)、[`hw/hw3/tests/README.md`](hw/hw3/tests/README.md)。
+（HW3 依作業定稿是每題 10 組、每組 2.5 分。）
 
 ```bash
 python3 tools/generate_tests.py  # 產生測資（全部作業；--hw hw2 只產一份）
@@ -313,7 +336,8 @@ python3 tools/stress_test.py     # 批改程式扛不扛得住奇怪的學生程
 `mutants/` 裡每一支故意寫錯一兩行的程式都必須至少被一組測資抓到 → 每題 300 筆隨機輸入兩份實作逐字對拍。
 
 `stress_test.py` 灌 21 支惡夢程式：無窮迴圈、無窮 `print`、吃記憶體、無窮遞迴、空檔案、語法錯誤、
-BOM / Big5 / UTF-16，以及**竄改 `builtins` 或 `math` 的程式**（每跑完一筆就還原全域狀態）。
+BOM / Big5 / UTF-16，以及**竄改 `builtins` 或 `math` 的程式**（每跑完一筆就還原全域狀態）；
+另外 HW3 Q2 的檔案讀寫：chdir 到別處、寫 10 MB 的檔案、亂寫答案檔、刪掉輸入檔，排在後面的正確解答都要拿滿分。
 
 `test_detect.py` 固定一批路徑（含 HW2 的 `q1a`、`Q1(b)`、`4b`、只寫 `q1` 要留空…），檢查學號與題號都判對，
 同時用 node 把 `assets/app.js` 的辨識段落抓出來跑一遍，確認網頁版與 CLI 版對同一條路徑給出相同答案。
@@ -323,6 +347,7 @@ BOM / Big5 / UTF-16，以及**竄改 `builtins` 或 `math` 的程式**（每跑�
 並確認全部參考解答、`ref_alt/`、`mutants/` 單獨出現都**不會**被拆開。
 網頁那一側（收件後自動分析、步驟 2 的顯示、還原、手動拆分）用 `node tools/e2e_split.js` 在真的瀏覽器裡跑一遍
 （要 Playwright，所以沒接在 CI；改了 `assets/app.js` 後手動跑）。
+讀寫檔案的題目（HW3）在瀏覽器裡的行為用 `node tools/e2e_hw3.js` 檢查：參考解答 100 分、每支漏洞程式被扣到的分數、細節顯示附的檔案、自訂測資附檔案。
 
 全部接在 `.github/workflows/verify.yml`（`e2e_split.js` 除外），每次 push 自動跑。
 
@@ -349,21 +374,23 @@ python3 tools/generate_tests.py && python3 tools/verify_tests.py \
 index.html                批改網頁（GitHub Pages 入口）
 start_local.command       macOS 雙擊即可在本機開網頁（最快，不用網路）
 assets/app.js             介面 + 批改流程（作業切換、檔名辨識、比對、成績表、細節抽屜、匯出、自動儲存）
-assets/worker.js          Pyodide worker：執行學生程式、餵 input、攔 stdout、逾時砍掉重開、寫法分析、a/b 合併檔拆分
+assets/worker.js          Pyodide worker：執行學生程式、餵 input、攔 stdout、逾時砍掉重開、讀寫檔案的題目、寫法分析、a/b 合併檔拆分
 data/assignments.js       所有作業打包成一份給網頁用（generate_tests.py 產生）
-data/hw1.json、hw2.json   每份作業的測資（命令列版用）
+data/hw1.json、hw2.json…  每份作業的測資（命令列版用）
 hw/README.md              作業資料夾格式、新增作業的步驟
 hw/hw1/                   HW1：spec.py、solutions/、ref_alt/、mutants/、tests/
 hw/hw2/                   HW2：同上
-tools/hwlib.py            各工具共用：找作業、載入 spec
+hw/hw3/                   HW3：同上（Q2、Q3 讀寫檔案，測資附的檔案在 tests/q2/NN.files/）
+tools/hwlib.py            各工具共用：找作業、載入 spec、在乾淨資料夾裡執行讀寫檔案的題目
 tools/generate_tests.py   產生測資
 tools/verify_tests.py     測資驗證（五道防線，含 mutation testing）
 tools/test_detect.py      學號 / 題號辨識與寫法分析的回歸測試（含 app.js 交叉比對）
 tools/test_split.py       a、b 寫在同一個檔案的拆分測試
 tools/e2e_split.js        拆分的端到端測試（真的瀏覽器，手動跑）
 tools/e2e_feedback.js     回饋文字與修課名單的端到端測試（真的瀏覽器，手動跑）
+tools/e2e_hw3.js          讀寫檔案題目（HW3）的端到端測試（真的瀏覽器，手動跑）
 tools/test_config.py      測資與配分設定的算法測試（含 app.js 交叉比對）
-tools/stress_test.py      抗壓測試（21 支惡夢程式 + 污染測試）
+tools/stress_test.py      抗壓測試（21 支惡夢程式 + 污染測試 + 檔案讀寫）
 tools/grade_cli.py        命令列批改（判定與網頁版一致）
 vendor/pyodide/           Pyodide 執行環境（約 12 MB，讓網頁離線可用）
 vendor/jszip/             解 zip 用

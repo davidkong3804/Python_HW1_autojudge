@@ -23,29 +23,39 @@ import argparse
 import json
 import os
 import re
-import subprocess
+import shutil
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import hwlib  # noqa: E402
 
 
-def run_solution(hw_id, qid, stdin_text):
-    proc = subprocess.run(
-        [sys.executable, hwlib.hw_path(hw_id, "solutions", qid + ".py")],
-        input=stdin_text, capture_output=True, text=True, timeout=30,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError("%s %s 參考解答執行失敗：%s" % (hw_id, qid, proc.stderr))
-    return proc.stdout.rstrip("\n")
+def run_solution(hw_id, qid, stdin_text, io=None):
+    code, out, err = hwlib.run_python(hwlib.hw_path(hw_id, "solutions", qid + ".py"),
+                                      stdin_text, io=io, timeout=30)
+    if code != 0:
+        raise RuntimeError("%s %s 參考解答執行失敗：%s" % (hw_id, qid, err))
+    return out.rstrip("\n")
 
 
 def drop_stale_files(qdir, keep):
-    """刪掉上一版留下來、編號超過 keep 的測資檔（例如 10 組縮成 5 組時的 06~10）。"""
+    """刪掉上一版留下來的測資檔：編號超過 keep 的（例如 10 組縮成 5 組時的 06~10），
+    以及所有 NN.files/ 資料夾（每次重寫）。"""
     for fn in sorted(os.listdir(qdir)):
+        full = os.path.join(qdir, fn)
+        if re.match(r"^\d+\.files$", fn) and os.path.isdir(full):
+            shutil.rmtree(full)
+            continue
         m = re.match(r"^(\d+)\.(in|out)$", fn)
         if m and int(m.group(1)) > keep:
-            os.remove(os.path.join(qdir, fn))
+            os.remove(full)
+
+
+def unpack_case(case):
+    """spec.py 的一筆測資：(輸入, 說明) 或 (輸入, 說明, {檔名: 內容})。"""
+    if len(case) == 3:
+        return case[0], case[1], dict(case[2])
+    return case[0], case[1], None
 
 
 def build_manifest(hw_id):
@@ -71,8 +81,14 @@ def build_manifest(hw_id):
         os.makedirs(qdir, exist_ok=True)
         drop_stale_files(qdir, len(cases))
         tests = []
-        for idx, (stdin_text, note) in enumerate(cases, start=1):
-            expected = run_solution(hw_id, qid, stdin_text + "\n")
+        mode = prob.get("fileMode", "")
+        assert mode in ("", "read", "write"), "%s %s 的 fileMode 只能是 read / write" % (hw_id, qid)
+        for idx, case in enumerate(cases, start=1):
+            stdin_text, note, files = unpack_case(case)
+            if files is not None and not mode:
+                raise AssertionError("%s %s #%d 附了檔案，但這題沒有設定 fileMode" % (hw_id, qid, idx))
+            io = hwlib.test_io(prob, {"files": files}) if mode else None
+            expected = run_solution(hw_id, qid, stdin_text + "\n", io)
             if sanity is not None:
                 assert sanity(qid, expected), "%s %s #%d 預期輸出沒通過 sanity 檢查：%s" % (
                     hw_id, qid, idx, expected)
@@ -80,8 +96,15 @@ def build_manifest(hw_id):
                 fh.write(stdin_text + "\n")
             with open(os.path.join(qdir, "%02d.out" % idx), "w", encoding="utf-8") as fh:
                 fh.write(expected + "\n")
-            tests.append({"n": idx, "input": stdin_text, "expected": expected,
-                          "note": note, "kind": "special"})
+            test = {"n": idx, "input": stdin_text, "expected": expected,
+                    "note": note, "kind": "special"}
+            if mode:
+                test["files"] = files or {}
+                fdir = os.path.join(qdir, "%02d.files" % idx)
+                if files:
+                    os.makedirs(fdir)
+                    hwlib.io_write_files(fdir, files)
+            tests.append(test)
         points = prob["points"]
         manifest["problems"].append({
             "id": qid,
@@ -95,6 +118,8 @@ def build_manifest(hw_id):
             "statement": statements.get(prob.get("group", qid), ""),
             "tests": tests,
         })
+        if mode:
+            manifest["problems"][-1]["fileMode"] = mode
     return manifest
 
 
@@ -122,12 +147,31 @@ def write_readme(hw_id, manifest):
             lines.append("")
             lines.append("寫法要求：%s（批改時只提示，不自動扣分）" % prob["requirement"])
         lines.append("")
-        lines.append("| # | 輸入 | 正確輸出 | 這組在測什麼 |")
-        lines.append("|---|---|---|---|")
+        if prob.get("fileMode"):
+            lines.append("這題會讀%s檔案：每組測資附的檔案在 `tests/%s/NN.files/`；%s" % (
+                "寫" if prob["fileMode"] == "write" else "",
+                prob["id"],
+                "正確輸出裡 `=== 檔名 ===` 之後是程式應該寫出的檔案內容。"
+                if prob["fileMode"] == "write" else "批改時會先把檔案放進程式的工作資料夾。"))
+            lines.append("")
+        if prob.get("fileMode"):
+            lines.append("| # | 輸入 | 附的檔案 | 正確輸出 | 這組在測什麼 |")
+            lines.append("|---|---|---|---|---|")
+        else:
+            lines.append("| # | 輸入 | 正確輸出 | 這組在測什麼 |")
+            lines.append("|---|---|---|---|")
         for t in prob["tests"]:
             shown_in = t["input"].replace("\n", "<br>")
             shown_out = t["expected"].replace("\n", "<br>")
-            lines.append("| %d | `%s` | `%s` | %s |" % (t["n"], shown_in, shown_out, t["note"]))
+            if prob.get("fileMode"):
+                files = t.get("files") or {}
+                shown_files = "<br>".join(
+                    "`%s`：`%s`" % (name, files[name].replace("\n", "⏎")[:80] +
+                                   ("…" if len(files[name]) > 80 else ""))
+                    for name in sorted(files)) or "（沒有附檔案）"
+                lines.append("| %d | `%s` | %s | `%s` | %s |" % (t["n"], shown_in, shown_files, shown_out, t["note"]))
+            else:
+                lines.append("| %d | `%s` | `%s` | %s |" % (t["n"], shown_in, shown_out, t["note"]))
         lines.append("")
     with open(hwlib.hw_path(hw_id, "tests", "README.md"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines))

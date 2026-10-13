@@ -890,5 +890,452 @@ window.AUTOJUDGE_ASSIGNMENTS = [
    "q6_no_abs.py": "# BUG: 沒有取絕對值，前面日期比較晚時印出負數\nimport datetime\na, b = input().split(',')\ntry:\n    d1 = datetime.datetime.strptime(a, '%Y-%m-%d')\n    d2 = datetime.datetime.strptime(b, '%Y-%m-%d')\n    print((d2 - d1).days)\nexcept ValueError:\n    print('Invalid')\n",
    "q6_no_try.py": "# BUG: 沒有處理不合法的日期，直接當掉（沒有輸出 Invalid）\nimport datetime\na, b = input().split(',')\nd1 = datetime.datetime.strptime(a, '%Y-%m-%d')\nd2 = datetime.datetime.strptime(b, '%Y-%m-%d')\nprint(abs((d2 - d1).days))\n"
   }
+ },
+ {
+  "id": "hw3",
+  "title": "HW3",
+  "subtitle": "組合數 C(n, k)、讀寫檔案的計算機、讀檔找最高總分、數列的第 y 個數",
+  "submission": "學號_HW3.zip → 學號_HW3/q1.py ~ q4.py",
+  "grading": "Q1~Q4 各 25 分，共 100 分；每題 10 組測資、每組 2.5 分",
+  "handout": "hw/hw3/handout.pdf",
+  "problems": [
+   {
+    "id": "q1",
+    "name": "Combination",
+    "group": "q1",
+    "points": 25,
+    "pointsPerTest": 2.5,
+    "checks": [
+     "def",
+     "loop"
+    ],
+    "requirement": "要用題目給的 factorial 函式計算，並用迴圈重複讀到正確的 k、n 為止",
+    "keywords": "factorial|combination|階乘|組合",
+    "statement": "Combination: use the given recursive factorial(x) to compute C(n, k) = n! / (k!(n-k)!), where k, n and the result are positive integers, 0 < k < n. k and n are input in one line separated by a space, in the order k n. Check 0 < k < n until the user inputs correct k and n; the program CANNOT be interrupted by any input error.\nk > n  -> Error! k > n, please input again!\nk = n  -> Error! k = n, please input again!\nk <= 0 -> Error! k <= 0, please input again!\nn <= 0 -> Error! n <= 0, please input again!\nIf there are multiple errors, output them in the above order.",
+    "tests": [
+     {
+      "n": 1,
+      "input": "1 2",
+      "expected": "2",
+      "note": "最小的合法輸入 k = 1、n = 2 -> 2",
+      "kind": "special"
+     },
+     {
+      "n": 2,
+      "input": "5 10",
+      "expected": "252",
+      "note": "一般情況 C(10, 5) = 252；用 / 相除會印成 252.0",
+      "kind": "special"
+     },
+     {
+      "n": 3,
+      "input": "9 10",
+      "expected": "10",
+      "note": "k = n - 1，n - k = 1，factorial(1) 是遞迴的終點 -> 10",
+      "kind": "special"
+     },
+     {
+      "n": 4,
+      "input": "12 9\n9 12",
+      "expected": "Error! k > n, please input again!\n220",
+      "note": "k > n 先報錯、重新輸入後才算 -> 220；只讀一次就結束的程式會漏掉答案",
+      "kind": "special"
+     },
+     {
+      "n": 5,
+      "input": "7 7\n3 7",
+      "expected": "Error! k = n, please input again!\n35",
+      "note": "k = n 要報錯（不是 k > n）-> 35",
+      "kind": "special"
+     },
+     {
+      "n": 6,
+      "input": "0 5\n2 5",
+      "expected": "Error! k <= 0, please input again!\n10",
+      "note": "k = 0 是 k <= 0 的邊界，要報錯；寫成 k < 0 會讓 0 通過並算出 1（或遞迴爆掉）",
+      "kind": "special"
+     },
+     {
+      "n": 7,
+      "input": "-2 -2\n2 4",
+      "expected": "Error! k = n, please input again!\nError! k <= 0, please input again!\nError! n <= 0, please input again!\n6",
+      "note": "k = n 而且兩個都 <= 0：三行錯誤要全部依序印出 -> 6；用 elif 只會印第一行",
+      "kind": "special"
+     },
+     {
+      "n": 8,
+      "input": "4 0\n3 6",
+      "expected": "Error! k > n, please input again!\nError! n <= 0, please input again!\n20",
+      "note": "k > n 和 n <= 0 同時成立（n = 0 是邊界），依序印兩行 -> 20",
+      "kind": "special"
+     },
+     {
+      "n": 9,
+      "input": "-5 -9\n4 8",
+      "expected": "Error! k > n, please input again!\nError! k <= 0, please input again!\nError! n <= 0, please input again!\n70",
+      "note": "-5 > -9 所以也是 k > n，三個錯誤依「k > n、k <= 0、n <= 0」的順序 -> 70",
+      "kind": "special"
+     },
+     {
+      "n": 10,
+      "input": "8 3\n5 5\n0 1\n20 40",
+      "expected": "Error! k > n, please input again!\nError! k = n, please input again!\nError! k <= 0, please input again!\n137846528820",
+      "note": "連續三次錯誤（k > n；k = n；k <= 0）才輸入正確 -> 137846528820，結果超過 32 位元",
+      "kind": "special"
+     }
+    ]
+   },
+   {
+    "id": "q2",
+    "name": "Extended Simple Calculator",
+    "group": "q2",
+    "points": 25,
+    "pointsPerTest": 2.5,
+    "checks": [
+     "try"
+    ],
+    "requirement": "要用 try / except 處理檔案、格式、計算的例外",
+    "keywords": "calculator|operator|計算機",
+    "statement": "Extended Simple Calculator: the input is \"input file name,output file name\" in one line. Read \"number1 operator number2\" (separated by spaces; numbers may be float; operators + - * /) from the input file and write the whole calculated result (e.g. 2, 3.187343, 78.63) to the output file. If successful, show \"Successfully\". Errors shown on the screen: File not found / Operator error / Cannot divide by zero / Operator lost (number1 number2) / Number1 lost (operator number2) / Number2 lost (number1 operator). \"Execution completed\" is always shown at the end. If the result cannot be calculated, the output file is still generated but empty.",
+    "tests": [
+     {
+      "n": 1,
+      "input": "calc_neg.txt,result_neg.txt",
+      "expected": "Successfully\nExecution completed\n=== result_neg.txt ===\n-19",
+      "note": "負數與減法：-7 - 12 = -19；全部轉成 float 會寫成 -19.0；用 isdigit() 判斷數字會把 -7 當成不是數字",
+      "kind": "special",
+      "files": {
+       "calc_neg.txt": "-7 - 12"
+      }
+     },
+     {
+      "n": 2,
+      "input": "half.txt,half_out.txt",
+      "expected": "Successfully\nExecution completed\n=== half_out.txt ===\n3.5",
+      "note": "整數相除但結果有小數 7 / 2 = 3.5；用 // 會得 3",
+      "kind": "special",
+      "files": {
+       "half.txt": "7 / 2"
+      }
+     },
+     {
+      "n": 3,
+      "input": "float_mul.txt,float_out.txt",
+      "expected": "Successfully\nExecution completed\n=== float_out.txt ===\n3.375",
+      "note": "兩個數字都是小數 1.5 * 2.25 = 3.375；用 int() 轉數字會出錯",
+      "kind": "special",
+      "files": {
+       "float_mul.txt": "1.5 * 2.25"
+      }
+     },
+     {
+      "n": 4,
+      "input": "third.txt,third_out.txt",
+      "expected": "Successfully\nExecution completed\n=== third_out.txt ===\n3.3333333333333335",
+      "note": "結果要寫完整的計算結果 10 / 3 = 3.3333333333333335，不可以四捨五入到兩位",
+      "kind": "special",
+      "files": {
+       "third.txt": "10 / 3"
+      }
+     },
+     {
+      "n": 5,
+      "input": "no_such_file.txt,out_missing.txt",
+      "expected": "File not found\nExecution completed\n=== out_missing.txt（空檔案）===",
+      "note": "輸入檔不存在 -> File not found + Execution completed；輸出檔仍然要產生（空檔案）",
+      "kind": "special",
+      "files": {}
+     },
+     {
+      "n": 6,
+      "input": "op_mod.txt,op_mod_out.txt",
+      "expected": "Operator error\nExecution completed\n=== op_mod_out.txt（空檔案）===",
+      "note": "% 不是 + - * / -> Operator error；輸出檔是空的，不可以印 Successfully",
+      "kind": "special",
+      "files": {
+       "op_mod.txt": "4 % 2"
+      }
+     },
+     {
+      "n": 7,
+      "input": "zero.txt,zero_out.txt",
+      "expected": "Cannot divide by zero\nExecution completed\n=== zero_out.txt（空檔案）===",
+      "note": "除以 0 -> Cannot divide by zero（要接住 ZeroDivisionError），輸出檔是空的",
+      "kind": "special",
+      "files": {
+       "zero.txt": "9 / 0"
+      }
+     },
+     {
+      "n": 8,
+      "input": "no_op.txt,no_op_out.txt",
+      "expected": "Operator lost\nExecution completed\n=== no_op_out.txt（空檔案）===",
+      "note": "只有 number1 number2 -> Operator lost",
+      "kind": "special",
+      "files": {
+       "no_op.txt": "8 5"
+      }
+     },
+     {
+      "n": 9,
+      "input": "no_num1.txt,no_num1_out.txt",
+      "expected": "Number1 lost\nExecution completed\n=== no_num1_out.txt（空檔案）===",
+      "note": "只有 operator number2 -> Number1 lost；和 Number2 lost 搞反會錯",
+      "kind": "special",
+      "files": {
+       "no_num1.txt": "* 6"
+      }
+     },
+     {
+      "n": 10,
+      "input": "no_num2.txt,no_num2_out.txt",
+      "expected": "Number2 lost\nExecution completed\n=== no_num2_out.txt（空檔案）===",
+      "note": "只有 number1 operator -> Number2 lost；Execution completed 不管有沒有錯都要印",
+      "kind": "special",
+      "files": {
+       "no_num2.txt": "6 +"
+      }
+     }
+    ],
+    "fileMode": "write"
+   },
+   {
+    "id": "q3",
+    "name": "Calculate and Search",
+    "group": "q3",
+    "points": 25,
+    "pointsPerTest": 2.5,
+    "checks": [],
+    "requirement": "",
+    "keywords": "score|highest|total|成績|總分",
+    "statement": "Calculate and Search: the input is a .txt file name (utf-8). The first line is N (1 <= N <= 100); lines 2 to N+1 are \"No. score1 score2 score3\" separated by a space (integers >= 0). Print the No. of the student with the highest total score and the total, separated by a comma. There is only one highest total score.",
+    "tests": [
+     {
+      "n": 1,
+      "input": "one.txt",
+      "expected": "7,0",
+      "note": "N = 1 而且三科都是 0 -> 7,0；最高分的初始值設成 0 又用 > 比較，會找不到人",
+      "kind": "special",
+      "files": {
+       "one.txt": "1\n7 0 0 0"
+      }
+     },
+     {
+      "n": 2,
+      "input": "first_best.txt",
+      "expected": "1,280",
+      "note": "最高總分是第一位學生 -> 1,280；只記最後一位或從第二位開始比都會錯",
+      "kind": "special",
+      "files": {
+       "first_best.txt": "4\n1 95 90 95\n2 60 70 80\n3 88 72 90\n4 75 80 85"
+      }
+     },
+     {
+      "n": 3,
+      "input": "last_best.txt",
+      "expected": "6,288",
+      "note": "最高總分是最後一位 -> 6,288；range(1, N) 少讀一行會漏掉他",
+      "kind": "special",
+      "files": {
+       "last_best.txt": "6\n1 70 73 62\n2 63 90 92\n3 73 68 60\n4 83 73 98\n5 61 99 67\n6 99 99 90"
+      }
+     },
+     {
+      "n": 4,
+      "input": "ids.txt",
+      "expected": "305,284",
+      "note": "學號不是 1、2、3… 要印檔案裡的 No.（305），不是第幾行",
+      "kind": "special",
+      "files": {
+       "ids.txt": "3\n17 80 80 80\n305 90 95 99\n2024 85 70 60"
+      }
+     },
+     {
+      "n": 5,
+      "input": "str_trap.txt",
+      "expected": "2,300",
+      "note": "總分 95 和 300：用字串比大小 \"95\" > \"300\" 會選錯人 -> 2,300",
+      "kind": "special",
+      "files": {
+       "str_trap.txt": "3\n1 30 30 35\n2 100 100 100\n3 40 30 20"
+      }
+     },
+     {
+      "n": 6,
+      "input": "subject_trap.txt",
+      "expected": "3,255",
+      "note": "單科最高（第 1 號第一科 100 分）不是總分最高 -> 3,255；只比第一科會錯",
+      "kind": "special",
+      "files": {
+       "subject_trap.txt": "3\n1 100 50 50\n2 60 90 70\n3 85 85 85"
+      }
+     },
+     {
+      "n": 7,
+      "input": "three_cols.txt",
+      "expected": "2,245",
+      "note": "要三科加總：只加前兩科會選到第 1 號（190），正確是 2,245",
+      "kind": "special",
+      "files": {
+       "three_cols.txt": "3\n1 95 95 10\n2 80 80 85\n3 60 70 90"
+      }
+     },
+     {
+      "n": 8,
+      "input": "close.txt",
+      "expected": "3,241",
+      "note": "總分只差 1 分（241 vs 240），最高在中間 -> 3,241",
+      "kind": "special",
+      "files": {
+       "close.txt": "5\n1 80 80 80\n2 79 81 79\n3 81 80 80\n4 80 79 81\n5 70 70 70"
+      }
+     },
+     {
+      "n": 9,
+      "input": "over100.txt",
+      "expected": "2,1200",
+      "note": "題目只說分數是 >= 0 的整數，沒說上限：總分 1200 的同學 -> 2,1200",
+      "kind": "special",
+      "files": {
+       "over100.txt": "2\n1 300 300 300\n2 400 400 400"
+      }
+     },
+     {
+      "n": 10,
+      "input": "class100.txt",
+      "expected": "63,297",
+      "note": "N = 100（題目上限），最高分在第 63 位 -> 63,297",
+      "kind": "special",
+      "files": {
+       "class100.txt": "100\n1 52 49 91\n2 95 72 75\n3 70 75 49\n4 85 69 86\n5 85 64 60\n6 37 87 70\n7 94 81 70\n8 63 84 55\n9 39 72 57\n10 44 78 42\n11 31 36 77\n12 65 80 45\n13 85 78 41\n14 46 48 64\n15 76 37 77\n16 47 37 56\n17 31 67 30\n18 30 64 41\n19 77 92 42\n20 75 30 63\n21 30 44 91\n22 32 57 31\n23 51 57 70\n24 59 77 66\n25 30 57 48\n26 42 57 60\n27 42 57 76\n28 63 95 49\n29 57 48 32\n30 32 88 90\n31 90 89 31\n32 90 88 68\n33 63 58 66\n34 39 80 92\n35 77 77 49\n36 84 83 93\n37 66 92 92\n38 80 59 78\n39 85 69 74\n40 80 43 58\n41 88 52 56\n42 79 36 49\n43 75 71 65\n44 92 60 85\n45 78 39 72\n46 45 79 95\n47 36 30 48\n48 51 83 69\n49 68 58 71\n50 87 42 67\n51 61 89 77\n52 53 39 55\n53 77 44 33\n54 55 89 60\n55 42 74 89\n56 52 71 50\n57 82 55 62\n58 44 35 50\n59 85 70 42\n60 84 68 36\n61 42 51 81\n62 35 45 86\n63 100 99 98\n64 53 40 94\n65 81 42 62\n66 87 59 69\n67 64 52 51\n68 59 36 94\n69 43 38 59\n70 74 74 90\n71 81 72 93\n72 37 36 89\n73 30 56 53\n74 72 73 85\n75 83 40 51\n76 61 35 33\n77 78 88 87\n78 67 48 61\n79 77 51 55\n80 46 78 45\n81 53 44 60\n82 53 52 52\n83 65 88 38\n84 37 78 53\n85 79 50 93\n86 41 37 77\n87 86 65 62\n88 72 51 92\n89 88 75 34\n90 69 64 36\n91 79 35 72\n92 64 66 43\n93 30 93 46\n94 70 65 40\n95 32 80 82\n96 46 69 53\n97 48 88 53\n98 34 32 71\n99 85 67 78\n100 38 32 85"
+      }
+     }
+    ],
+    "fileMode": "read"
+   },
+   {
+    "id": "q4",
+    "name": "Loop and Condition",
+    "group": "q4",
+    "points": 25,
+    "pointsPerTest": 2.5,
+    "checks": [
+     "loop"
+    ],
+    "requirement": "要用迴圈產生數列",
+    "keywords": "series|location|數列",
+    "statement": "Loop and Condition: x and y in one line separated by a space (positive integers). x is the first number of a series and y is a location. If the number is odd, multiply it by 5 and then minus 3; if it is even, divide it by 2 and then add 1. Print the number at location y (location = index + 1).",
+    "tests": [
+     {
+      "n": 1,
+      "input": "7 1",
+      "expected": "7",
+      "note": "y = 1：一步都不用走，直接印 x -> 7；迴圈多跑一次會印 32",
+      "kind": "special"
+     },
+     {
+      "n": 2,
+      "input": "3 2",
+      "expected": "12",
+      "note": "奇數一步：3 * 5 - 3 = 12；寫成 5 * (3 - 3) 會得 0",
+      "kind": "special"
+     },
+     {
+      "n": 3,
+      "input": "8 2",
+      "expected": "5",
+      "note": "偶數一步：8 / 2 + 1 = 5；用 / 會印 5.0",
+      "kind": "special"
+     },
+     {
+      "n": 4,
+      "input": "1 3",
+      "expected": "2",
+      "note": "1 是奇數 -> 2 -> 2（2 / 2 + 1 = 2 停在原地）",
+      "kind": "special"
+     },
+     {
+      "n": 5,
+      "input": "6 4",
+      "expected": "12",
+      "note": "6 -> 4 -> 3 -> 12：偶、偶、奇交錯",
+      "kind": "special"
+     },
+     {
+      "n": 6,
+      "input": "10 3",
+      "expected": "4",
+      "note": "10 -> 6 -> 4，連續兩次偶數規則，用 / 會印 4.0",
+      "kind": "special"
+     },
+     {
+      "n": 7,
+      "input": "13 7",
+      "expected": "22",
+      "note": "13 -> 62 -> 32 -> 17 -> 82 -> 42 -> 22，奇偶規則寫反會完全不同",
+      "kind": "special"
+     },
+     {
+      "n": 8,
+      "input": "11 14",
+      "expected": "132",
+      "note": "數字會先變大到 2082 再掉回來，第 14 個是 132",
+      "kind": "special"
+     },
+     {
+      "n": 9,
+      "input": "2 100",
+      "expected": "2",
+      "note": "2 是固定點，位置 100 還是 2；迴圈次數多也不能出錯",
+      "kind": "special"
+     },
+     {
+      "n": 10,
+      "input": "999 30",
+      "expected": "1892",
+      "note": "起始值是三位數的奇數，走 29 步",
+      "kind": "special"
+     }
+    ]
+   }
+  ],
+  "solutions": {
+   "q1": "def factorial(x):\n    if x == 1:\n        return 1\n    else:\n        return (x * factorial(x-1))\n\n\nwhile True:\n    try:\n        k, n = [int(t) for t in input().split()]\n    except ValueError:\n        print(\"Error! Please input two integers k and n, please input again!\")\n        continue\n    errors = []\n    if k > n:\n        errors.append(\"Error! k > n, please input again!\")\n    if k == n:\n        errors.append(\"Error! k = n, please input again!\")\n    if k <= 0:\n        errors.append(\"Error! k <= 0, please input again!\")\n    if n <= 0:\n        errors.append(\"Error! n <= 0, please input again!\")\n    if errors:\n        for e in errors:\n            print(e)\n        continue\n    print(factorial(n) // (factorial(k) * factorial(n - k)))\n    break\n",
+   "q2": "OPS = (\"+\", \"-\", \"*\", \"/\")\n\n\ndef to_number(tok):\n    \"\"\"整數保持整數（3 + 2 -> 5），有小數點才是 float。不是數字丟 ValueError。\"\"\"\n    try:\n        return int(tok)\n    except ValueError:\n        return float(tok)\n\n\ndef is_number(tok):\n    try:\n        to_number(tok)\n        return True\n    except ValueError:\n        return False\n\n\nnames = input().split(\",\")\nin_name, out_name = names[0], names[1]\nfout = open(out_name, \"w\", encoding=\"utf-8\")\ntry:\n    with open(in_name, encoding=\"utf-8\") as fin:\n        parts = fin.read().split()\n    if len(parts) == 3:\n        if parts[1] not in OPS:\n            print(\"Operator error\")\n        else:\n            a, op, b = to_number(parts[0]), parts[1], to_number(parts[2])\n            if op == \"+\":\n                result = a + b\n            elif op == \"-\":\n                result = a - b\n            elif op == \"*\":\n                result = a * b\n            else:\n                result = a / b\n            fout.write(str(result))\n            print(\"Successfully\")\n    elif len(parts) == 2:\n        if is_number(parts[0]) and is_number(parts[1]):\n            print(\"Operator lost\")\n        elif parts[0] in OPS:\n            print(\"Number1 lost\")\n        elif parts[1] in OPS:\n            print(\"Number2 lost\")\n        else:\n            print(\"Format error\")\n    else:\n        print(\"Format error\")\nexcept FileNotFoundError:\n    print(\"File not found\")\nexcept ZeroDivisionError:\n    print(\"Cannot divide by zero\")\nexcept ValueError:\n    print(\"Format error\")\nfinally:\n    fout.close()\n    print(\"Execution completed\")\n",
+   "q3": "name = input()\nwith open(name, encoding=\"utf-8\") as fh:\n    lines = fh.read().split(\"\\n\")\n\nn = int(lines[0])\nbest_no, best_total = None, None\nfor line in lines[1:n + 1]:\n    cols = line.split()\n    total = int(cols[1]) + int(cols[2]) + int(cols[3])\n    if best_total is None or total > best_total:\n        best_no, best_total = cols[0], total\nprint(str(best_no) + \",\" + str(best_total))\n",
+   "q4": "x, y = input().split()\nnum = int(x)\nlocation = 1\nwhile location < int(y):\n    if num % 2 == 1:\n        num = num * 5 - 3\n    else:\n        num = num // 2 + 1\n    location += 1\nprint(num)\n"
+  },
+  "mutants": {
+   "q1_elif_chain.py": "def factorial(x):\n    if x == 1:\n        return 1\n    else:\n        return (x * factorial(x-1))\n\n\nwhile True:\n    try:\n        k, n = [int(t) for t in input().split()]\n    except ValueError:\n        print(\"Error! Please input two integers k and n, please input again!\")\n        continue\n    errors = []\n    if k > n:\n        errors.append(\"Error! k > n, please input again!\")\n    elif k == n:\n        errors.append(\"Error! k = n, please input again!\")\n    elif k <= 0:\n        errors.append(\"Error! k <= 0, please input again!\")\n    elif n <= 0:\n        errors.append(\"Error! n <= 0, please input again!\")\n    if errors:\n        for e in errors:\n            print(e)\n        continue\n    print(factorial(n) // (factorial(k) * factorial(n - k)))\n    break\n",
+   "q1_float_div.py": "def factorial(x):\n    if x == 1:\n        return 1\n    else:\n        return (x * factorial(x-1))\n\n\nwhile True:\n    try:\n        k, n = [int(t) for t in input().split()]\n    except ValueError:\n        print(\"Error! Please input two integers k and n, please input again!\")\n        continue\n    errors = []\n    if k > n:\n        errors.append(\"Error! k > n, please input again!\")\n    if k == n:\n        errors.append(\"Error! k = n, please input again!\")\n    if k <= 0:\n        errors.append(\"Error! k <= 0, please input again!\")\n    if n <= 0:\n        errors.append(\"Error! n <= 0, please input again!\")\n    if errors:\n        for e in errors:\n            print(e)\n        continue\n    print(factorial(n) / (factorial(k) * factorial(n - k)))\n    break\n",
+   "q1_k_lt_0.py": "def factorial(x):\n    if x == 1:\n        return 1\n    else:\n        return (x * factorial(x-1))\n\n\nwhile True:\n    try:\n        k, n = [int(t) for t in input().split()]\n    except ValueError:\n        print(\"Error! Please input two integers k and n, please input again!\")\n        continue\n    errors = []\n    if k > n:\n        errors.append(\"Error! k > n, please input again!\")\n    if k == n:\n        errors.append(\"Error! k = n, please input again!\")\n    if k < 0:\n        errors.append(\"Error! k <= 0, please input again!\")\n    if n <= 0:\n        errors.append(\"Error! n <= 0, please input again!\")\n    if errors:\n        for e in errors:\n            print(e)\n        continue\n    print(factorial(n) // (factorial(k) * factorial(n - k)))\n    break\n",
+   "q1_kge_n.py": "def factorial(x):\n    if x == 1:\n        return 1\n    else:\n        return (x * factorial(x-1))\n\n\nwhile True:\n    try:\n        k, n = [int(t) for t in input().split()]\n    except ValueError:\n        print(\"Error! Please input two integers k and n, please input again!\")\n        continue\n    errors = []\n    if k >= n:\n        errors.append(\"Error! k > n, please input again!\")\n    if k <= 0:\n        errors.append(\"Error! k <= 0, please input again!\")\n    if n <= 0:\n        errors.append(\"Error! n <= 0, please input again!\")\n    if errors:\n        for e in errors:\n            print(e)\n        continue\n    print(factorial(n) // (factorial(k) * factorial(n - k)))\n    break\n",
+   "q1_no_retry.py": "def factorial(x):\n    if x == 1:\n        return 1\n    else:\n        return (x * factorial(x-1))\n\n\nwhile True:\n    try:\n        k, n = [int(t) for t in input().split()]\n    except ValueError:\n        print(\"Error! Please input two integers k and n, please input again!\")\n        continue\n    errors = []\n    if k > n:\n        errors.append(\"Error! k > n, please input again!\")\n    if k == n:\n        errors.append(\"Error! k = n, please input again!\")\n    if k <= 0:\n        errors.append(\"Error! k <= 0, please input again!\")\n    if n <= 0:\n        errors.append(\"Error! n <= 0, please input again!\")\n    if errors:\n        for e in errors:\n            print(e)\n        break\n    print(factorial(n) // (factorial(k) * factorial(n - k)))\n    break\n",
+   "q1_order_n_first.py": "def factorial(x):\n    if x == 1:\n        return 1\n    else:\n        return (x * factorial(x-1))\n\n\nwhile True:\n    try:\n        k, n = [int(t) for t in input().split()]\n    except ValueError:\n        print(\"Error! Please input two integers k and n, please input again!\")\n        continue\n    errors = []\n    if k > n:\n        errors.append(\"Error! k > n, please input again!\")\n    if k == n:\n        errors.append(\"Error! k = n, please input again!\")\n    if n <= 0:\n        errors.append(\"Error! n <= 0, please input again!\")\n    if k <= 0:\n        errors.append(\"Error! k <= 0, please input again!\")\n    if errors:\n        for e in errors:\n            print(e)\n        continue\n    print(factorial(n) // (factorial(k) * factorial(n - k)))\n    break\n",
+   "q1_read_n_k.py": "def factorial(x):\n    if x == 1:\n        return 1\n    else:\n        return (x * factorial(x-1))\n\n\nwhile True:\n    try:\n        n, k = [int(t) for t in input().split()]\n    except ValueError:\n        print(\"Error! Please input two integers k and n, please input again!\")\n        continue\n    errors = []\n    if k > n:\n        errors.append(\"Error! k > n, please input again!\")\n    if k == n:\n        errors.append(\"Error! k = n, please input again!\")\n    if k <= 0:\n        errors.append(\"Error! k <= 0, please input again!\")\n    if n <= 0:\n        errors.append(\"Error! n <= 0, please input again!\")\n    if errors:\n        for e in errors:\n            print(e)\n        continue\n    print(factorial(n) // (factorial(k) * factorial(n - k)))\n    break\n",
+   "q2_append_newline_text.py": "OPS = (\"+\", \"-\", \"*\", \"/\")\n\n\ndef to_number(tok):\n    \"\"\"整數保持整數（3 + 2 -> 5），有小數點才是 float。不是數字丟 ValueError。\"\"\"\n    try:\n        return int(tok)\n    except ValueError:\n        return float(tok)\n\n\ndef is_number(tok):\n    try:\n        to_number(tok)\n        return True\n    except ValueError:\n        return False\n\n\nnames = input().split(\",\")\nin_name, out_name = names[0], names[1]\nfout = open(out_name, \"w\", encoding=\"utf-8\")\ntry:\n    with open(in_name, encoding=\"utf-8\") as fin:\n        parts = fin.read().split()\n    if len(parts) == 3:\n        if parts[1] not in OPS:\n            print(\"Operator error\")\n        else:\n            a, op, b = to_number(parts[0]), parts[1], to_number(parts[2])\n            if op == \"+\":\n                result = a + b\n            elif op == \"-\":\n                result = a - b\n            elif op == \"*\":\n                result = a * b\n            else:\n                result = a / b\n            fout.write(\"Result: \" + str(result))\n            print(\"Successfully\")\n    elif len(parts) == 2:\n        if is_number(parts[0]) and is_number(parts[1]):\n            print(\"Operator lost\")\n        elif parts[0] in OPS:\n            print(\"Number1 lost\")\n        elif parts[1] in OPS:\n            print(\"Number2 lost\")\n        else:\n            print(\"Format error\")\n    else:\n        print(\"Format error\")\nexcept FileNotFoundError:\n    print(\"File not found\")\nexcept ZeroDivisionError:\n    print(\"Cannot divide by zero\")\nexcept ValueError:\n    print(\"Format error\")\nfinally:\n    fout.close()\n    print(\"Execution completed\")\n",
+   "q2_float_always.py": "OPS = (\"+\", \"-\", \"*\", \"/\")\n\n\ndef to_number(tok):\n    \"\"\"整數保持整數（3 + 2 -> 5），有小數點才是 float。不是數字丟 ValueError。\"\"\"\n    try:\n        return float(tok)\n    except ValueError:\n        return float(tok)\n\n\ndef is_number(tok):\n    try:\n        to_number(tok)\n        return True\n    except ValueError:\n        return False\n\n\nnames = input().split(\",\")\nin_name, out_name = names[0], names[1]\nfout = open(out_name, \"w\", encoding=\"utf-8\")\ntry:\n    with open(in_name, encoding=\"utf-8\") as fin:\n        parts = fin.read().split()\n    if len(parts) == 3:\n        if parts[1] not in OPS:\n            print(\"Operator error\")\n        else:\n            a, op, b = to_number(parts[0]), parts[1], to_number(parts[2])\n            if op == \"+\":\n                result = a + b\n            elif op == \"-\":\n                result = a - b\n            elif op == \"*\":\n                result = a * b\n            else:\n                result = a / b\n            fout.write(str(result))\n            print(\"Successfully\")\n    elif len(parts) == 2:\n        if is_number(parts[0]) and is_number(parts[1]):\n            print(\"Operator lost\")\n        elif parts[0] in OPS:\n            print(\"Number1 lost\")\n        elif parts[1] in OPS:\n            print(\"Number2 lost\")\n        else:\n            print(\"Format error\")\n    else:\n        print(\"Format error\")\nexcept FileNotFoundError:\n    print(\"File not found\")\nexcept ZeroDivisionError:\n    print(\"Cannot divide by zero\")\nexcept ValueError:\n    print(\"Format error\")\nfinally:\n    fout.close()\n    print(\"Execution completed\")\n",
+   "q2_floor_div.py": "OPS = (\"+\", \"-\", \"*\", \"/\")\n\n\ndef to_number(tok):\n    \"\"\"整數保持整數（3 + 2 -> 5），有小數點才是 float。不是數字丟 ValueError。\"\"\"\n    try:\n        return int(tok)\n    except ValueError:\n        return float(tok)\n\n\ndef is_number(tok):\n    try:\n        to_number(tok)\n        return True\n    except ValueError:\n        return False\n\n\nnames = input().split(\",\")\nin_name, out_name = names[0], names[1]\nfout = open(out_name, \"w\", encoding=\"utf-8\")\ntry:\n    with open(in_name, encoding=\"utf-8\") as fin:\n        parts = fin.read().split()\n    if len(parts) == 3:\n        if parts[1] not in OPS:\n            print(\"Operator error\")\n        else:\n            a, op, b = to_number(parts[0]), parts[1], to_number(parts[2])\n            if op == \"+\":\n                result = a + b\n            elif op == \"-\":\n                result = a - b\n            elif op == \"*\":\n                result = a * b\n            else:\n                result = a // b\n            fout.write(str(result))\n            print(\"Successfully\")\n    elif len(parts) == 2:\n        if is_number(parts[0]) and is_number(parts[1]):\n            print(\"Operator lost\")\n        elif parts[0] in OPS:\n            print(\"Number1 lost\")\n        elif parts[1] in OPS:\n            print(\"Number2 lost\")\n        else:\n            print(\"Format error\")\n    else:\n        print(\"Format error\")\nexcept FileNotFoundError:\n    print(\"File not found\")\nexcept ZeroDivisionError:\n    print(\"Cannot divide by zero\")\nexcept ValueError:\n    print(\"Format error\")\nfinally:\n    fout.close()\n    print(\"Execution completed\")\n",
+   "q2_int_only.py": "OPS = (\"+\", \"-\", \"*\", \"/\")\n\n\ndef to_number(tok):\n    \"\"\"整數保持整數（3 + 2 -> 5），有小數點才是 float。不是數字丟 ValueError。\"\"\"\n    return int(tok)\n\n\ndef is_number(tok):\n    try:\n        to_number(tok)\n        return True\n    except ValueError:\n        return False\n\n\nnames = input().split(\",\")\nin_name, out_name = names[0], names[1]\nfout = open(out_name, \"w\", encoding=\"utf-8\")\ntry:\n    with open(in_name, encoding=\"utf-8\") as fin:\n        parts = fin.read().split()\n    if len(parts) == 3:\n        if parts[1] not in OPS:\n            print(\"Operator error\")\n        else:\n            a, op, b = to_number(parts[0]), parts[1], to_number(parts[2])\n            if op == \"+\":\n                result = a + b\n            elif op == \"-\":\n                result = a - b\n            elif op == \"*\":\n                result = a * b\n            else:\n                result = a / b\n            fout.write(str(result))\n            print(\"Successfully\")\n    elif len(parts) == 2:\n        if is_number(parts[0]) and is_number(parts[1]):\n            print(\"Operator lost\")\n        elif parts[0] in OPS:\n            print(\"Number1 lost\")\n        elif parts[1] in OPS:\n            print(\"Number2 lost\")\n        else:\n            print(\"Format error\")\n    else:\n        print(\"Format error\")\nexcept FileNotFoundError:\n    print(\"File not found\")\nexcept ZeroDivisionError:\n    print(\"Cannot divide by zero\")\nexcept ValueError:\n    print(\"Format error\")\nfinally:\n    fout.close()\n    print(\"Execution completed\")\n",
+   "q2_isdigit.py": "OPS = (\"+\", \"-\", \"*\", \"/\")\n\n\ndef to_number(tok):\n    \"\"\"整數保持整數（3 + 2 -> 5），有小數點才是 float。不是數字丟 ValueError。\"\"\"\n    try:\n        return int(tok)\n    except ValueError:\n        return float(tok)\n\n\ndef is_number(tok):\n    return tok.replace(\".\", \"\", 1).isdigit()\n\n\nnames = input().split(\",\")\nin_name, out_name = names[0], names[1]\nfout = open(out_name, \"w\", encoding=\"utf-8\")\ntry:\n    with open(in_name, encoding=\"utf-8\") as fin:\n        parts = fin.read().split()\n    if len(parts) == 3:\n        if parts[1] not in OPS:\n            print(\"Operator error\")\n        else:\n            if not (is_number(parts[0]) and is_number(parts[2])):\n                raise ValueError\n            a, op, b = to_number(parts[0]), parts[1], to_number(parts[2])\n            if op == \"+\":\n                result = a + b\n            elif op == \"-\":\n                result = a - b\n            elif op == \"*\":\n                result = a * b\n            else:\n                result = a / b\n            fout.write(str(result))\n            print(\"Successfully\")\n    elif len(parts) == 2:\n        if is_number(parts[0]) and is_number(parts[1]):\n            print(\"Operator lost\")\n        elif parts[0] in OPS:\n            print(\"Number1 lost\")\n        elif parts[1] in OPS:\n            print(\"Number2 lost\")\n        else:\n            print(\"Format error\")\n    else:\n        print(\"Format error\")\nexcept FileNotFoundError:\n    print(\"File not found\")\nexcept ZeroDivisionError:\n    print(\"Cannot divide by zero\")\nexcept ValueError:\n    print(\"Format error\")\nfinally:\n    fout.close()\n    print(\"Execution completed\")\n",
+   "q2_lost_swapped.py": "OPS = (\"+\", \"-\", \"*\", \"/\")\n\n\ndef to_number(tok):\n    \"\"\"整數保持整數（3 + 2 -> 5），有小數點才是 float。不是數字丟 ValueError。\"\"\"\n    try:\n        return int(tok)\n    except ValueError:\n        return float(tok)\n\n\ndef is_number(tok):\n    try:\n        to_number(tok)\n        return True\n    except ValueError:\n        return False\n\n\nnames = input().split(\",\")\nin_name, out_name = names[0], names[1]\nfout = open(out_name, \"w\", encoding=\"utf-8\")\ntry:\n    with open(in_name, encoding=\"utf-8\") as fin:\n        parts = fin.read().split()\n    if len(parts) == 3:\n        if parts[1] not in OPS:\n            print(\"Operator error\")\n        else:\n            a, op, b = to_number(parts[0]), parts[1], to_number(parts[2])\n            if op == \"+\":\n                result = a + b\n            elif op == \"-\":\n                result = a - b\n            elif op == \"*\":\n                result = a * b\n            else:\n                result = a / b\n            fout.write(str(result))\n            print(\"Successfully\")\n    elif len(parts) == 2:\n        if is_number(parts[0]) and is_number(parts[1]):\n            print(\"Operator lost\")\n        elif parts[0] in OPS:\n            print(\"Number2 lost\")\n        elif parts[1] in OPS:\n            print(\"Number1 lost\")\n        else:\n            print(\"Format error\")\n    else:\n        print(\"Format error\")\nexcept FileNotFoundError:\n    print(\"File not found\")\nexcept ZeroDivisionError:\n    print(\"Cannot divide by zero\")\nexcept ValueError:\n    print(\"Format error\")\nfinally:\n    fout.close()\n    print(\"Execution completed\")\n",
+   "q2_no_finally.py": "OPS = (\"+\", \"-\", \"*\", \"/\")\n\n\ndef to_number(tok):\n    \"\"\"整數保持整數（3 + 2 -> 5），有小數點才是 float。不是數字丟 ValueError。\"\"\"\n    try:\n        return int(tok)\n    except ValueError:\n        return float(tok)\n\n\ndef is_number(tok):\n    try:\n        to_number(tok)\n        return True\n    except ValueError:\n        return False\n\n\nnames = input().split(\",\")\nin_name, out_name = names[0], names[1]\nfout = open(out_name, \"w\", encoding=\"utf-8\")\ntry:\n    with open(in_name, encoding=\"utf-8\") as fin:\n        parts = fin.read().split()\n    if len(parts) == 3:\n        if parts[1] not in OPS:\n            print(\"Operator error\")\n        else:\n            a, op, b = to_number(parts[0]), parts[1], to_number(parts[2])\n            if op == \"+\":\n                result = a + b\n            elif op == \"-\":\n                result = a - b\n            elif op == \"*\":\n                result = a * b\n            else:\n                result = a / b\n            fout.write(str(result))\n            print(\"Successfully\")\n    elif len(parts) == 2:\n        if is_number(parts[0]) and is_number(parts[1]):\n            print(\"Operator lost\")\n        elif parts[0] in OPS:\n            print(\"Number1 lost\")\n        elif parts[1] in OPS:\n            print(\"Number2 lost\")\n        else:\n            print(\"Format error\")\n    else:\n        print(\"Format error\")\nexcept FileNotFoundError:\n    print(\"File not found\")\nexcept ZeroDivisionError:\n    print(\"Cannot divide by zero\")\nexcept ValueError:\n    print(\"Format error\")\nfout.close()\nprint(\"Execution completed\") if False else None\n",
+   "q2_outfile_only_on_success.py": "OPS = (\"+\", \"-\", \"*\", \"/\")\n\n\ndef to_number(tok):\n    \"\"\"整數保持整數（3 + 2 -> 5），有小數點才是 float。不是數字丟 ValueError。\"\"\"\n    try:\n        return int(tok)\n    except ValueError:\n        return float(tok)\n\n\ndef is_number(tok):\n    try:\n        to_number(tok)\n        return True\n    except ValueError:\n        return False\n\n\nnames = input().split(\",\")\nin_name, out_name = names[0], names[1]\nfout = None\ntry:\n    with open(in_name, encoding=\"utf-8\") as fin:\n        parts = fin.read().split()\n    if len(parts) == 3:\n        if parts[1] not in OPS:\n            print(\"Operator error\")\n        else:\n            a, op, b = to_number(parts[0]), parts[1], to_number(parts[2])\n            if op == \"+\":\n                result = a + b\n            elif op == \"-\":\n                result = a - b\n            elif op == \"*\":\n                result = a * b\n            else:\n                result = a / b\n            fout = open(out_name, \"w\", encoding=\"utf-8\")\n            fout.write(str(result))\n            print(\"Successfully\")\n    elif len(parts) == 2:\n        if is_number(parts[0]) and is_number(parts[1]):\n            print(\"Operator lost\")\n        elif parts[0] in OPS:\n            print(\"Number1 lost\")\n        elif parts[1] in OPS:\n            print(\"Number2 lost\")\n        else:\n            print(\"Format error\")\n    else:\n        print(\"Format error\")\nexcept FileNotFoundError:\n    print(\"File not found\")\nexcept ZeroDivisionError:\n    print(\"Cannot divide by zero\")\nexcept ValueError:\n    print(\"Format error\")\nfinally:\n    if fout:\n        fout.close()\n    print(\"Execution completed\")\n",
+   "q2_round2.py": "OPS = (\"+\", \"-\", \"*\", \"/\")\n\n\ndef to_number(tok):\n    \"\"\"整數保持整數（3 + 2 -> 5），有小數點才是 float。不是數字丟 ValueError。\"\"\"\n    try:\n        return int(tok)\n    except ValueError:\n        return float(tok)\n\n\ndef is_number(tok):\n    try:\n        to_number(tok)\n        return True\n    except ValueError:\n        return False\n\n\nnames = input().split(\",\")\nin_name, out_name = names[0], names[1]\nfout = open(out_name, \"w\", encoding=\"utf-8\")\ntry:\n    with open(in_name, encoding=\"utf-8\") as fin:\n        parts = fin.read().split()\n    if len(parts) == 3:\n        if parts[1] not in OPS:\n            print(\"Operator error\")\n        else:\n            a, op, b = to_number(parts[0]), parts[1], to_number(parts[2])\n            if op == \"+\":\n                result = a + b\n            elif op == \"-\":\n                result = a - b\n            elif op == \"*\":\n                result = a * b\n            else:\n                result = a / b\n            fout.write(str(round(result, 2)))\n            print(\"Successfully\")\n    elif len(parts) == 2:\n        if is_number(parts[0]) and is_number(parts[1]):\n            print(\"Operator lost\")\n        elif parts[0] in OPS:\n            print(\"Number1 lost\")\n        elif parts[1] in OPS:\n            print(\"Number2 lost\")\n        else:\n            print(\"Format error\")\n    else:\n        print(\"Format error\")\nexcept FileNotFoundError:\n    print(\"File not found\")\nexcept ZeroDivisionError:\n    print(\"Cannot divide by zero\")\nexcept ValueError:\n    print(\"Format error\")\nfinally:\n    fout.close()\n    print(\"Execution completed\")\n",
+   "q2_success_always.py": "OPS = (\"+\", \"-\", \"*\", \"/\")\n\n\ndef to_number(tok):\n    \"\"\"整數保持整數（3 + 2 -> 5），有小數點才是 float。不是數字丟 ValueError。\"\"\"\n    try:\n        return int(tok)\n    except ValueError:\n        return float(tok)\n\n\ndef is_number(tok):\n    try:\n        to_number(tok)\n        return True\n    except ValueError:\n        return False\n\n\nnames = input().split(\",\")\nin_name, out_name = names[0], names[1]\nfout = open(out_name, \"w\", encoding=\"utf-8\")\ntry:\n    with open(in_name, encoding=\"utf-8\") as fin:\n        parts = fin.read().split()\n    if len(parts) == 3:\n        if parts[1] not in OPS:\n            print(\"Operator error\")\n        else:\n            a, op, b = to_number(parts[0]), parts[1], to_number(parts[2])\n            if op == \"+\":\n                result = a + b\n            elif op == \"-\":\n                result = a - b\n            elif op == \"*\":\n                result = a * b\n            else:\n                result = a / b\n            fout.write(str(result))\n    elif len(parts) == 2:\n        if is_number(parts[0]) and is_number(parts[1]):\n            print(\"Operator lost\")\n        elif parts[0] in OPS:\n            print(\"Number1 lost\")\n        elif parts[1] in OPS:\n            print(\"Number2 lost\")\n        else:\n            print(\"Format error\")\n    else:\n        print(\"Format error\")\nexcept FileNotFoundError:\n    print(\"File not found\")\nexcept ZeroDivisionError:\n    print(\"Cannot divide by zero\")\nexcept ValueError:\n    print(\"Format error\")\nfinally:\n    fout.close()\n    print(\"Successfully\")\n    print(\"Execution completed\")\n",
+   "q2_zero_uncaught.py": "OPS = (\"+\", \"-\", \"*\", \"/\")\n\n\ndef to_number(tok):\n    \"\"\"整數保持整數（3 + 2 -> 5），有小數點才是 float。不是數字丟 ValueError。\"\"\"\n    try:\n        return int(tok)\n    except ValueError:\n        return float(tok)\n\n\ndef is_number(tok):\n    try:\n        to_number(tok)\n        return True\n    except ValueError:\n        return False\n\n\nnames = input().split(\",\")\nin_name, out_name = names[0], names[1]\nfout = open(out_name, \"w\", encoding=\"utf-8\")\ntry:\n    with open(in_name, encoding=\"utf-8\") as fin:\n        parts = fin.read().split()\n    if len(parts) == 3:\n        if parts[1] not in OPS:\n            print(\"Operator error\")\n        else:\n            a, op, b = to_number(parts[0]), parts[1], to_number(parts[2])\n            if op == \"+\":\n                result = a + b\n            elif op == \"-\":\n                result = a - b\n            elif op == \"*\":\n                result = a * b\n            else:\n                result = a / b\n            fout.write(str(result))\n            print(\"Successfully\")\n    elif len(parts) == 2:\n        if is_number(parts[0]) and is_number(parts[1]):\n            print(\"Operator lost\")\n        elif parts[0] in OPS:\n            print(\"Number1 lost\")\n        elif parts[1] in OPS:\n            print(\"Number2 lost\")\n        else:\n            print(\"Format error\")\n    else:\n        print(\"Format error\")\nexcept FileNotFoundError:\n    print(\"File not found\")\nexcept ValueError:\n    print(\"Format error\")\nfinally:\n    fout.close()\n    print(\"Execution completed\")\n",
+   "q3_first_subject.py": "name = input()\nwith open(name, encoding=\"utf-8\") as fh:\n    lines = fh.read().split(\"\\n\")\n\nn = int(lines[0])\nbest_no, best_total, best_first = None, None, -1\nfor line in lines[1:n + 1]:\n    cols = line.split()\n    total = int(cols[1]) + int(cols[2]) + int(cols[3])\n    if best_total is None or int(cols[1]) > best_first:\n        best_first = int(cols[1])\n        best_no, best_total = cols[0], total\nprint(str(best_no) + \",\" + str(best_total))\n",
+   "q3_init_zero.py": "name = input()\nwith open(name, encoding=\"utf-8\") as fh:\n    lines = fh.read().split(\"\\n\")\n\nn = int(lines[0])\nbest_no, best_total = None, 0\nfor line in lines[1:n + 1]:\n    cols = line.split()\n    total = int(cols[1]) + int(cols[2]) + int(cols[3])\n    if total > best_total:\n        best_no, best_total = cols[0], total\nprint(str(best_no) + \",\" + str(best_total))\n",
+   "q3_print_index.py": "name = input()\nwith open(name, encoding=\"utf-8\") as fh:\n    lines = fh.read().split(\"\\n\")\n\nn = int(lines[0])\nbest_no, best_total = None, None\nfor idx, line in enumerate(lines[1:n + 1], start=1):\n    cols = line.split()\n    total = int(cols[1]) + int(cols[2]) + int(cols[3])\n    if best_total is None or total > best_total:\n        best_no, best_total = idx, total\nprint(str(best_no) + \",\" + str(best_total))\n",
+   "q3_skip_last.py": "name = input()\nwith open(name, encoding=\"utf-8\") as fh:\n    lines = fh.read().split(\"\\n\")\n\nn = int(lines[0])\nbest_no, best_total = None, None\nfor line in lines[1:n]:\n    cols = line.split()\n    total = int(cols[1]) + int(cols[2]) + int(cols[3])\n    if best_total is None or total > best_total:\n        best_no, best_total = cols[0], total\nprint(str(best_no) + \",\" + str(best_total))\n",
+   "q3_space_after_comma.py": "name = input()\nwith open(name, encoding=\"utf-8\") as fh:\n    lines = fh.read().split(\"\\n\")\n\nn = int(lines[0])\nbest_no, best_total = None, None\nfor line in lines[1:n + 1]:\n    cols = line.split()\n    total = int(cols[1]) + int(cols[2]) + int(cols[3])\n    if best_total is None or total > best_total:\n        best_no, best_total = cols[0], total\nprint(str(best_no) + \", \" + str(best_total))\n",
+   "q3_string_compare.py": "name = input()\nwith open(name, encoding=\"utf-8\") as fh:\n    lines = fh.read().split(\"\\n\")\n\nn = int(lines[0])\nbest_no, best_total = None, None\nfor line in lines[1:n + 1]:\n    cols = line.split()\n    total = int(cols[1]) + int(cols[2]) + int(cols[3])\n    if best_total is None or str(total) > str(best_total):\n        best_no, best_total = cols[0], total\nprint(str(best_no) + \",\" + str(best_total))\n",
+   "q3_two_subjects.py": "name = input()\nwith open(name, encoding=\"utf-8\") as fh:\n    lines = fh.read().split(\"\\n\")\n\nn = int(lines[0])\nbest_no, best_total = None, None\nfor line in lines[1:n + 1]:\n    cols = line.split()\n    total = int(cols[1]) + int(cols[2])\n    if best_total is None or total > best_total:\n        best_no, best_total = cols[0], total\nprint(str(best_no) + \",\" + str(best_total))\n",
+   "q4_loop_y_times.py": "x, y = input().split()\nnum = int(x)\nlocation = 1\nwhile location <= int(y):\n    if num % 2 == 1:\n        num = num * 5 - 3\n    else:\n        num = num // 2 + 1\n    location += 1\nprint(num)\n",
+   "q4_minus_first.py": "x, y = input().split()\nnum = int(x)\nlocation = 1\nwhile location < int(y):\n    if num % 2 == 1:\n        num = (num - 3) * 5\n    else:\n        num = num // 2 + 1\n    location += 1\nprint(num)\n",
+   "q4_plus_first.py": "x, y = input().split()\nnum = int(x)\nlocation = 1\nwhile location < int(y):\n    if num % 2 == 1:\n        num = num * 5 - 3\n    else:\n        num = (num + 1) // 2\n    location += 1\nprint(num)\n",
+   "q4_rules_swapped.py": "x, y = input().split()\nnum = int(x)\nlocation = 1\nwhile location < int(y):\n    if num % 2 == 0:\n        num = num * 5 - 3\n    else:\n        num = num // 2 + 1\n    location += 1\nprint(num)\n",
+   "q4_true_div.py": "x, y = input().split()\nnum = int(x)\nlocation = 1\nwhile location < int(y):\n    if num % 2 == 1:\n        num = num * 5 - 3\n    else:\n        num = num / 2 + 1\n    location += 1\nprint(num)\n"
+  }
  }
 ];

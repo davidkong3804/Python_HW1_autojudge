@@ -1,11 +1,11 @@
-# 作業資料夾格式（新增 HW3、HW4… 看這份）
+# 作業資料夾格式（新增 HW4、HW5… 看這份）
 
 每一份作業是 `hw/<id>/` 一個資料夾，`<id>` 用小寫 `hw1`、`hw2`、`hw3`……
 網頁上方的作業切換、命令列的 `--hw`、驗證工具，全部是自動掃這個資料夾決定有哪些作業，
 **不用改任何網頁或批改程式**。
 
 ```
-hw/hw3/
+hw/hw4/
   spec.py            題目、配分、測資、獨立驗算（下面說明）
   solutions/q1.py    參考解答，檔名 = 題號。預期輸出由它實際執行產生
   ref_alt/q1.py      另一位助教寫的獨立實作（刻意用不同寫法），對拍用
@@ -16,14 +16,14 @@ hw/hw3/
 ## 新增一份作業的步驟
 
 ```bash
-cp -r hw/hw2 hw/hw3          # 從最像的那份複製
-# 改 hw/hw3/spec.py、solutions/、ref_alt/、mutants/
-python3 tools/generate_tests.py --hw hw3
-python3 tools/verify_tests.py --hw hw3      # 五道防線全過才能用
-git add hw/hw3 data && git commit
+cp -r hw/hw3 hw/hw4          # 從最像的那份複製（有讀寫檔案的題目就從 hw3 複製）
+# 改 hw/hw4/spec.py、solutions/、ref_alt/、mutants/
+python3 tools/generate_tests.py --hw hw4
+python3 tools/verify_tests.py --hw hw4      # 五道防線全過才能用
+git add hw/hw4 data && git commit
 ```
 
-push 之後 GitHub Pages 更新，網頁上方就會多一個「HW3」可以切換。
+push 之後 GitHub Pages 更新，網頁上方就會多一個「HW4」可以切換。
 
 ## spec.py 欄位
 
@@ -48,7 +48,8 @@ PROBLEMS = [
      "group": "q1",                 # 選填：子題共用同一個 group（例如 q1a、q1b 都寫 "q1"）
      "checks": ["loop"],            # 選填：寫法要求，只提示助教，不自動扣分
      "requirement": "要用迴圈",      # 選填：寫法要求的文字說明
-     "keywords": r"reverse|反轉"},   # 選填：學生交 .ipynb 時用來猜題號
+     "keywords": r"reverse|反轉",    # 選填：學生交 .ipynb 時用來猜題號
+     "fileMode": "read"},            # 選填：讀寫檔案的題目，見下面「讀寫檔案的題目」
 ]
 
 INDEPENDENT = {"q1": lambda line: ...}    # 第三道防線：不看解答、用別的方法重算答案
@@ -58,11 +59,31 @@ def sanity(qid, expected): return True   # 選填：產生測資時對預期輸�
 
 ### 測資慣例（沿用 HW1 定版）
 
-* 每題（每個子題）**5 組**，全部是手工挑選的特殊測資，每一組都要換到一個明確的鑑別點
+* 每題（每個子題）**5 組**（作業定稿另有規定的照定稿，例如 HW3 每題 10 組），全部是手工挑選的特殊測資，每一組都要換到一個明確的鑑別點
 * **不採用**作業 PDF 上的範例（學生手上已經有，沒有鑑別度），也不放隨機測資
 * 預期輸出一律由參考解答實際執行產生，不手寫答案
 * 題目敘述有兩種合理解讀的輸入**不要出**（例如題目沒說會不會有連續空白，就不要出連續空白）
 * 每一支 mutant 都必須至少被一組測資抓到（`verify_tests.py` 把關）
+
+### 讀寫檔案的題目（`fileMode`，HW3 Q2、Q3）
+
+題目要程式自己開檔讀 / 寫時，在 `PROBLEMS` 那一題加 `"fileMode"`，每筆測資多一個「附的檔案」：
+
+```python
+def build_q3():
+    return [("score.txt", "這組在測什麼", {"score.txt": "2\n1 70 80 90\n2 60 70 80"}),
+            ("missing.txt,out.txt", "輸入檔不存在", {})]       # 不附檔案 = 測「檔案不存在」
+```
+
+| `fileMode` | 意思 |
+|---|---|
+| `"read"` | 只讀檔：每筆測資在乾淨的資料夾裡跑，先放好附的檔案，只比對螢幕輸出 |
+| `"write"` | 會寫檔：同上，而且跑完把資料夾裡新產生 / 被改過的檔案接在螢幕輸出後面一起比對（`=== 檔名 ===` 下面是內容，空檔案是 `=== 檔名（空檔案）===`） |
+
+* 預期輸出一樣由參考解答實際執行產生，接檔案的格式只有一份（`assets/worker.js` 的 `fileio` 段落），網頁、命令列、產生測資都用它
+* `INDEPENDENT` 多收一個參數：`INDEPENDENT["q3"](輸入, {檔名: 內容})`；`random_inputs` 回傳 `(輸入, {檔名: 內容})`
+* 附的檔案會另外寫到 `tests/<題號>/NN.files/`，方便釋出或給同學看
+* 檔案內容的結尾不要加換行（題目沒說的話，有沒有結尾換行就是兩種合理解讀）
 
 ### 子題（a / b）
 
@@ -89,6 +110,7 @@ HW2 那種「同一題用兩種寫法各做一次」的子題，題號寫成 `q1
 | `def` | 有自己定義函式（`def`） |
 | `set` | 有用到 set（`set()`、`{1, 2}`、集合推導式） |
 | `slice` | 有用到切片 `x[a:b:c]` |
+| `try` | 有 `try` / `except`（HW3 Q2 要處理例外） |
 | `import:模組名` | 有 import 這個模組，例如 `import:datetime` |
 
 這些是用 Python `ast` 靜態分析的**提示**：成績表上會標 ⚑，

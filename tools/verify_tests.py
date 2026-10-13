@@ -28,17 +28,14 @@ RED, GREEN, YELLOW, RESET = "\033[31m", "\033[32m", "\033[33m", "\033[0m"
 failures = []
 
 
-def run(path, stdin_text, timeout=20):
+def run(path, stdin_text, io=None, timeout=20):
     try:
-        proc = subprocess.run(
-            [sys.executable, path], input=stdin_text, capture_output=True,
-            text=True, timeout=timeout,
-        )
+        code, out, _err = hwlib.run_python(path, stdin_text, io=io, timeout=timeout)
     except subprocess.TimeoutExpired:
         return None, "TLE"
-    if proc.returncode != 0:
+    if code != 0:
         return None, "RE"
-    return proc.stdout.rstrip("\n").rstrip(), ""
+    return out.rstrip("\n").rstrip(), ""
 
 
 def verify_hw(hw_id):
@@ -63,7 +60,7 @@ def verify_hw(hw_id):
         for label, folder in (("參考解答", SOL), ("獨立實作", ALT)):
             bad = []
             for t in tests:
-                got, err = run(os.path.join(folder, qid + ".py"), t["input"] + "\n")
+                got, err = run(os.path.join(folder, qid + ".py"), t["input"] + "\n", hwlib.test_io(prob, t))
                 if err or got != t["expected"]:
                     bad.append((t["n"], err or got))
             status = "%s全部通過%s" % (GREEN, RESET) if not bad else "%s不通過 %s%s" % (RED, bad, RESET)
@@ -76,7 +73,9 @@ def verify_hw(hw_id):
         if qid not in INDEPENDENT:
             failures.append("%s %s 沒有提供 INDEPENDENT 純數學重算" % (hw_id, qid))
         for t in (tests if qid in INDEPENDENT else []):
-            calc = INDEPENDENT[qid](t["input"])
+            # 讀寫檔案的題目：INDEPENDENT 多收一個參數「這筆測資附的檔案」
+            calc = INDEPENDENT[qid](t["input"], dict(t.get("files") or {})) if prob.get("fileMode") \
+                else INDEPENDENT[qid](t["input"])
             if calc != t["expected"]:
                 bad.append((t["n"], t["input"], calc, t["expected"]))
         print("   2) 純數學重算：%s" % ("%s一致%s" % (GREEN, RESET) if not bad
@@ -93,7 +92,7 @@ def verify_hw(hw_id):
         for m in mutants:
             caught, first = 0, None
             for t in tests:
-                got, err = run(os.path.join(MUT, m), t["input"] + "\n")
+                got, err = run(os.path.join(MUT, m), t["input"] + "\n", hwlib.test_io(prob, t))
                 if err or got != t["expected"]:
                     caught += 1
                     if first is None:
@@ -108,11 +107,14 @@ def verify_hw(hw_id):
 
         # --- 5：隨機對拍 ---
         mism = []
-        for line in (random_inputs(qid, rng) if random_inputs else []):
-            a, ea = run(os.path.join(SOL, qid + ".py"), line + "\n")
-            b, eb = run(os.path.join(ALT, qid + ".py"), line + "\n")
+        for item in (random_inputs(qid, rng) if random_inputs else []):
+            # 讀寫檔案的題目：random_inputs 回傳 (輸入, {檔名: 內容})
+            line, files = item if isinstance(item, tuple) else (item, None)
+            io = hwlib.test_io(prob, {"files": files})
+            a, ea = run(os.path.join(SOL, qid + ".py"), line + "\n", io)
+            b, eb = run(os.path.join(ALT, qid + ".py"), line + "\n", io)
             if (a, ea) != (b, eb):
-                mism.append((line, a or ea, b or eb))
+                mism.append((line if files is None else (line, files), a or ea, b or eb))
             if len(mism) >= 3:
                 break
         print("   4) 隨機對拍 300 筆：%s" % ("%s兩份實作完全一致%s" % (GREEN, RESET) if not mism
