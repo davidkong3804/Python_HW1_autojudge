@@ -165,7 +165,7 @@ HW2 每題規定寫法（a 用迴圈、b 只用切片；用 for / while；要定
 | 某格分數看起來怪 | 點那一格，看程式碼和逐筆「應該輸出 vs 實際輸出」，通常一眼就知道是格式還是邏輯問題 |
 | 檔名是 `3 (1).py`、`ex3_ver2.py` 這種有兩個數字的 | 不會猜，會標「待指定」：以前會默默掛到錯的題目。按「自動配對」或手動選 |
 | 學號認錯 / 題號沒認出來 | 在步驟 2 展開那位學生直接改；學號改一次就套用到他整份作業。認不出題號的可以按「自動配對題號」，它會拿每題前兩筆測資試跑來判斷 |
-| HW2 只交 `q1.py` 沒寫 a / b | 會標「待指定」。a、b 的輸入輸出一樣，自動配對**分不出來**，只會先放到這位學生還缺的那一個並標「子題請確認」，請看程式碼判斷 |
+| HW2 只交 `q1.py` 沒寫 a / b | 裡面把 a、b 都寫了就自動拆開（見下一節）；只寫了一種寫法的，依寫法猜（a 用迴圈、b 用切片…，剛好只符合一個才猜）並標「子題請確認」；猜不出來才標「待指定」。a、b 的輸入輸出一樣，「自動配對題號」按鈕**分不出來** |
 | 改完題號 / 學號 | 成績表上方會出現「只重批這幾位」，不用全部重跑 |
 | 同一位同學同一題有多份檔案 | 全部都會跑，取最高分並標 ⚠ |
 | 同學反應測資不對 | 先看 `hw/<作業>/tests/README.md`，每一組都寫了「這組在測什麼」。真的有錯就改 `hw/<作業>/spec.py` 重新產生並重跑驗證 |
@@ -173,9 +173,43 @@ HW2 每題規定寫法（a 用迴圈、b 只用切片；用 for / while；要定
 | 想確認環境正常 | 按「先驗證參考解答」，應該 100 分 |
 | 不想開瀏覽器 | 用命令列版，見第五節 |
 
+### a、b 寫在同一個檔案（約兩成同學）
+
+老師公告要拆成 `q1a.py`、`q1b.py`，但還是有人把 a、b（甚至整份作業）寫在同一個檔案。
+放進來之後，平台會自動檢查並拆開，**每一段各自是一個「程式」、各自批改、各自給分**，所以 a 對 b 錯就是只拿 a 的分數：
+
+| 同學的寫法 | 怎麼拆 |
+|---|---|
+| 有註解標記：`# Q1a`、`# (b)`、`# 1-b`、`# b. Use list slicing only`、`"""Q1b"""`、`#for a-1`、Colab 的 `#@title Q1b`… | 依標記切開。檔名只寫 `q1.py` 時，數字從檔名取 |
+| 每個子題只定義函式（`def q1_a():`），最後 `if __name__ == "__main__":` 只呼叫 a | 切開後各段補上呼叫自己的函式，b 不會被當成沒執行 |
+| `import` / `def` 放在最前面、或 b 用到 a 定義的函式 | 共用的 `import`、`def` 會自動帶到每一段 |
+| **沒有任何標記**（兩支程式直接接在一起） | 找出「第二支程式可能從哪裡開始」的候選切點，用每題前 2 筆測資試跑，挑兩半都答對的那個；標「**請確認**」，順序預設 a 在前、b 在後 |
+
+**不會亂拆**（拆錯會讓原本滿分的人變 0 分，所以很保守）：
+
+* 單一程式、整份本來就答對第一筆測資的，一律不拆
+* 步驟註解（`# 1. 讀取輸入`、`# (a) 讀入  # (b) 輸出`）：後面的段落用到前面的變數，就是同一支程式的步驟，不拆
+* 只有一個標記、標記的子題不存在（HW1 沒有 1a）、標記落在函式或字串中間，都不拆
+* 只有一半答對、另一半是亂碼的，要切點很像第二支程式的開頭才拆
+
+在步驟 2 展開那位學生，拆出來的每一段會標「自動拆出（依註解「# Q1b」，第 10–13 行）」或「試跑猜的切點，請確認」：
+按「**確認**」表示看過了；拆錯按「**還原成一個檔案**」（之後不會再自動拆）；程式沒拆對也可以按「**拆成兩段…**」自己指定第二段從第幾行開始。
+在成績細節裡也可以點開「整份原始檔案」對照。進階設定可以整個關掉（不拆，整個檔案當一題）。命令列版用 `--no-split` 關掉。
+
+### 其他真實繳交裡出現過的狀況
+
+| 狀況 | 處理 |
+|---|---|
+| **`.py` 裡面其實是 Jupyter 筆記本**（打開是一大串 JSON，同學把 `.ipynb` 直接改副檔名） | 標示「`.py` 內容是 ipynb」，**該題 0 分**，跟交 `.ipynb` 同樣依規定算錯。要破例才按「拆成程式碼」 |
+| 檔名 `HW2Q1-a.py`、`hw2q1.py`（HW2 黏在題號前面） | 認得（`HW2` 會先拿掉） |
+| 檔名 `q1_py.py`（Colab 下載時多出來的） | `_py` 不是子題，視為沒寫 a/b，走上面「只交 q1.py」的流程 |
+| 沒有壓縮、直接放在外層的散裝 `.py`（`b11902004#_姓名_…_q1.py`） | 學號從檔名開頭的 `b11902004#` 取，不會被外層 zip 的檔名（`d1234f56-…zip`）搶走 |
+| `.7z`、`.rar` | **不支援**，步驟 2 會列出來，請自己解壓縮後再放進來（命令列版也會提醒） |
+| 同一題貼了好幾份（`#for a-1`、`#for a-2 test`） | 都拆出來批改，取最高分，標 ⚠ |
+
 ### 「為什麼我 0 分」— 回同學時可以直接用的清單
 
-1. 檔名不是公告的題號（HW1 `q1.py`、HW2 `q1a.py`），或沒有放在 `學號_HWn/` 資料夾裡
+1. 檔名不是公告的題號（HW1 `q1.py`、HW2 `q1a.py`），或沒有放在 `學號_HWn/` 資料夾裡；或是把 `.ipynb` 直接改副檔名成 `.py`
 2. 把一行輸入拆成好幾次 `input()`（題目是一行，就只能讀一次）
 3. 輸出格式不對：少補小數位（`25` 要寫成 `25.00`）、用逗號而不是空白分隔（或反過來）、大小寫不符（`weak` ≠ `Weak`）
 4. 語法錯誤 —— 交出去前至少自己跑過一次
@@ -218,12 +252,13 @@ python3 tools/grade_cli.py 繳交資料夾/ --hw hw2 --config hw2_批改設定.j
 ```bash
 python3 tools/grade_cli.py 繳交資料夾/                    # 作業從檔名的 _HWn 自動判斷
 python3 tools/grade_cli.py 繳交資料夾/ --hw hw2           # 指定作業
+python3 tools/grade_cli.py 繳交資料夾/ --no-split         # 不自動拆開「a、b 寫在同一個檔案」的繳交
 python3 tools/grade_cli.py *.zip -o 成績.csv --detail 明細.json
 python3 tools/grade_cli.py 繳交資料夾/ --config 設定.json  # 套用網頁上調好的測資與配分
 ```
 
 判定邏輯與網頁版**完全一致**：同一份 `data/<作業>.json`、同樣的輸出正規化、同一套 `input()` 攔截方式、
-同一段寫法分析程式（直接從 `assets/worker.js` 讀出來用），
+同一段寫法分析程式與「a、b 拆開」的程式（都是直接從 `assets/worker.js` 讀出來用），
 而且用 `python -I -S` 執行（不載入 site-packages），避免「網頁 0 分、助教電腦裝了 numpy 就滿分」。
 
 常用選項：`--timeout 8`、`--strict-output`、`--lenient-input`、`--detail 明細.json`。
@@ -245,6 +280,7 @@ python3 tools/grade_cli.py 繳交資料夾/ --config 設定.json  # 套用網頁
 python3 tools/generate_tests.py  # 產生測資（全部作業；--hw hw2 只產一份）
 python3 tools/verify_tests.py    # 測資正確性（五道防線；--hw hw2 只驗一份）
 python3 tools/test_detect.py     # 學號 / 題號（含子題）辨識、寫法分析
+python3 tools/test_split.py      # a、b 寫在同一個檔案的拆分（該拆的要拆對、不該拆的不能拆）
 python3 tools/test_config.py     # 測資與配分設定的算法
 python3 tools/stress_test.py     # 批改程式扛不扛得住奇怪的學生程式
 ```
@@ -260,7 +296,12 @@ BOM / Big5 / UTF-16，以及**竄改 `builtins` 或 `math` 的程式**（每跑�
 同時用 node 把 `assets/app.js` 的辨識段落抓出來跑一遍，確認網頁版與 CLI 版對同一條路徑給出相同答案。
 `test_config.py` 同樣把 `app.js` 的設定段落抓出來跟 `grade_cli.py` 對拍。
 
-全部接在 `.github/workflows/verify.yml`，每次 push 自動跑。
+`test_split.py` 把真實繳交裡見過的寫法（標記、函式包裝、`__main__` 區塊、Colab 檔頭、輸出多了說明文字）改寫成不含學生資料的合成案例，
+並確認全部參考解答、`ref_alt/`、`mutants/` 單獨出現都**不會**被拆開。
+網頁那一側（收件後自動分析、步驟 2 的顯示、還原、手動拆分）用 `node tools/e2e_split.js` 在真的瀏覽器裡跑一遍
+（要 Playwright，所以沒接在 CI；改了 `assets/app.js` 後手動跑）。
+
+全部接在 `.github/workflows/verify.yml`（`e2e_split.js` 除外），每次 push 自動跑。
 
 **還是請三到四位助教各自寫一次作業、跑過測資**：自動驗證擋得住實作 bug，
 擋不住「題目本身有兩種合理解讀」。
@@ -269,8 +310,8 @@ BOM / Big5 / UTF-16，以及**竄改 `builtins` 或 `math` 的程式**（每跑�
 
 ```bash
 python3 tools/generate_tests.py && python3 tools/verify_tests.py \
-  && python3 tools/test_detect.py && python3 tools/test_config.py \
-  && python3 tools/stress_test.py
+  && python3 tools/test_detect.py && python3 tools/test_split.py \
+  && python3 tools/test_config.py && python3 tools/stress_test.py
 ```
 
 `git push` 之後 GitHub Pages 會自動重新建置（一兩分鐘），網址不變。
@@ -285,7 +326,7 @@ python3 tools/generate_tests.py && python3 tools/verify_tests.py \
 index.html                批改網頁（GitHub Pages 入口）
 start_local.command       macOS 雙擊即可在本機開網頁（最快，不用網路）
 assets/app.js             介面 + 批改流程（作業切換、檔名辨識、比對、成績表、細節抽屜、匯出、自動儲存）
-assets/worker.js          Pyodide worker：執行學生程式、餵 input、攔 stdout、逾時砍掉重開、寫法分析
+assets/worker.js          Pyodide worker：執行學生程式、餵 input、攔 stdout、逾時砍掉重開、寫法分析、a/b 合併檔拆分
 data/assignments.js       所有作業打包成一份給網頁用（generate_tests.py 產生）
 data/hw1.json、hw2.json   每份作業的測資（命令列版用）
 hw/README.md              作業資料夾格式、新增作業的步驟
@@ -295,6 +336,8 @@ tools/hwlib.py            各工具共用：找作業、載入 spec
 tools/generate_tests.py   產生測資
 tools/verify_tests.py     測資驗證（五道防線，含 mutation testing）
 tools/test_detect.py      學號 / 題號辨識與寫法分析的回歸測試（含 app.js 交叉比對）
+tools/test_split.py       a、b 寫在同一個檔案的拆分測試
+tools/e2e_split.js        拆分的端到端測試（真的瀏覽器，手動跑）
 tools/test_config.py      測資與配分設定的算法測試（含 app.js 交叉比對）
 tools/stress_test.py      抗壓測試（21 支惡夢程式 + 污染測試）
 tools/grade_cli.py        命令列批改（判定與網頁版一致）

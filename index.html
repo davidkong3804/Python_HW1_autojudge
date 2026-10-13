@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>自動批改 · Autojudge</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%232f6fed%22%2F%3E%3Cpath%20d%3D%22M9%2016.5l4.8%204.8L23%2012%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%223.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E">
-<link rel="stylesheet" href="assets/style.css?v=2.6">
+<link rel="stylesheet" href="assets/style.css?v=2.7">
 </head>
 <body>
 
@@ -62,7 +62,8 @@
         <li>公告格式：<code>B11901234_HW2.zip → B11901234_HW2/q1a.py …</code>，學號與題號都會自動抓出來。</li>
         <li>COOL 下載的檔名被加料也沒關係：<code>wang_98765_43210_B11901234_HW2.zip</code> 一樣抓得到 <code>B11901234</code>。</li>
         <li>其他寫法：<code>B11901234_q3.py</code>、<code>hw1_3.py</code>、<code>第3題.py</code>；有子題的作業認得 <code>q1a</code>、<code>q1_a</code>、<code>Q1(a)</code>、<code>1a</code>。</li>
-        <li>有子題的作業只寫 <code>q1.py</code> 分不出 a 還是 b，會標成「待指定」，請展開選題號。</li>
+        <li>有子題的作業只寫 <code>q1.py</code> 分不出 a 還是 b：如果裡面把 a、b 都寫了，會自動拆開（依註解標記，沒有標記就試跑猜切點）；只寫了一種寫法的，依寫法（a 用迴圈、b 用切片…）猜，標「請確認」；猜不出來才標「待指定」。</li>
+        <li><code>.7z</code>、<code>.rar</code> 不支援，請先解壓縮；<code>.py</code> 其實是筆記本內容（JSON）的，跟 <code>.ipynb</code> 一樣依規定算錯。</li>
         <li>萬一有人交 Colab 的 <code>.ipynb</code>：會自動拆成一格一格的 code cell（<code>!pip</code>、<code>%magic</code> 會被略過），再用「自動配對」判斷每一格是哪一題。</li>
         <li>修課名單：COOL 或 Excel 匯出的 CSV 都可以，只要有一欄是學號，旁邊的姓名欄會一起讀進來。</li>
       </ul>
@@ -81,6 +82,8 @@
       <button class="btn ghost small" id="expandAll">全部展開</button>
       <button class="btn ghost small" id="collapseAll">全部收合</button>
       <label class="opt"><input type="checkbox" id="onlyProblem"> 只看需要處理的</label>
+      <button class="btn ghost small" id="expandNotebooks" hidden
+        title="依老師規定 .ipynb 算錯、不轉檔。真的要全部破例，按這裡把所有筆記本拆成一格一格的程式碼，再批改">破例：把所有 .ipynb 拆成程式碼</button>
       <span class="grow"></span>
       <span id="subsStat" class="muted small"></span>
     </div>
@@ -142,6 +145,14 @@
         <div class="seg" role="radiogroup" aria-label="一行輸入拆成多次 input">
           <label><input type="radio" name="lenientInput" value="0" checked><span>算錯</span></label>
           <label><input type="radio" name="lenientInput" value="1"><span>接受</span></label>
+        </div>
+      </div>
+      <div class="rule">
+        <div class="rule-q">a、b 寫在同一個檔案
+          <span class="rule-eg">依註解標記（<code># Q1b</code>、<code># (b)</code>），沒有標記就試跑猜切點，各自批改；拆錯可以在步驟 2 還原</span></div>
+        <div class="seg" role="radiogroup" aria-label="a、b 寫在同一個檔案">
+          <label><input type="radio" name="autoSplit" value="1" checked><span>自動拆開</span></label>
+          <label><input type="radio" name="autoSplit" value="0"><span>不拆（整個檔案當一題）</span></label>
         </div>
       </div>
       <div class="rule">
@@ -268,7 +279,7 @@
 </footer>
 
 <script src="vendor/jszip/jszip.min.js"></script>
-<script src="data/assignments.js?v=2.6"></script>
-<script src="assets/app.js?v=2.6"></script>
+<script src="data/assignments.js?v=2.7"></script>
+<script src="assets/app.js?v=2.7"></script>
 </body>
 </html>

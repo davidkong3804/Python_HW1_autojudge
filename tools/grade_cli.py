@@ -204,6 +204,8 @@ def qid_from_parts(num, letter, qids):
 
 
 def detect_qid(name, qids):
+    # HW2Q1-a、hw2q3 這種作業編號黏在題號前面的寫法：先拿掉 HW2，不然 q 前面是數字會認不出來
+    name = re.sub(r"HW[ \t\u3000]*\d+", "_", name, flags=re.I | re.ASCII)
     m = QID_RE.search(name)
     if m:
         q = qid_from_parts(m.group(1), m.group(2), qids)
@@ -294,6 +296,14 @@ def id_from_tokens(segment, want_letters):
     return ""
 
 
+def id_from_cool(segment):
+    """COOL 下載的檔案 / 資料夾 / zip 名稱開頭是「學號#_姓名_…」。散裝 .py 沒有學號資料夾，靠這個認。"""
+    m = re.match(r"^([A-Za-z][A-Za-z0-9]*)#_", segment)
+    if not m:
+        return ""
+    return m.group(1).upper() if (is_id_with_letter(m.group(1)) or is_id_digits(m.group(1))) else ""
+
+
 ID_FINDERS = [
     id_from_hw_folder,
     lambda s: id_from_tokens(s, True),
@@ -305,6 +315,9 @@ def detect_student(relpath):
     parts = [p for p in relpath.replace("\\", "/").split("/") if p]
     base = os.path.splitext(parts.pop())[0] if parts else ""
     segs = [re.sub(r"\.zip$", "", seg, flags=re.I) for seg in reversed(parts)]
+    for seg in [base] + segs:
+        if id_from_cool(seg):
+            return id_from_cool(seg)
     for finder in ID_FINDERS:            # 先把所有層都用高優先級的規則掃過一輪
         for seg in segs:
             hit = finder(seg)
@@ -334,7 +347,11 @@ def collect(paths, workdir):
     def take_file(disp, real):
         try:
             with open(real, "rb") as fh:
-                found.append((disp, decode_source(fh.read())))
+                code = decode_source(fh.read())
+            if looks_like_notebook(code):
+                print(".py 檔案裡面其實是 Jupyter 筆記本（ipynb 的 JSON），依規定 0 分、不批改：%s" % disp)
+                return
+            found.append((disp, code))
         except OSError as exc:
             print("讀取失敗 %s：%s" % (disp, exc), file=sys.stderr)
 
@@ -359,6 +376,8 @@ def collect(paths, workdir):
                 rel = os.path.relpath(full, base).replace("\\", "/")
                 if fn.lower().endswith(".py"):
                     take_file(disp_prefix + rel, full)
+                elif fn.lower().endswith((".7z", ".rar", ".tar", ".gz", ".tgz")):
+                    print("不支援這種壓縮檔，請先解壓縮再放進來：%s" % (disp_prefix + rel))
                 elif fn.lower().endswith(".ipynb"):
                     # 老師規定：交 .ipynb 不幫忙轉檔，算錯（網頁版可以破例拆開）
                     print("交的是 .ipynb，依規定算錯、不批改：%s" % (disp_prefix + rel))
@@ -433,6 +452,44 @@ def _load_features():
 
 
 code_features = _load_features()
+
+
+def _load_split():
+    """a、b 寫在同一個檔案時的拆分，同樣直接用 assets/worker.js 裡那一段 Python（網頁版跑的就是它）。"""
+    with open(os.path.join(ROOT, "assets", "worker.js"), encoding="utf-8") as fh:
+        src = fh.read()
+    a = src.index("# --8<-- split:start")
+    b = src.index("# --8<-- split:end")
+    ns = {"_clean_source": lambda code: code.replace("\r\n", "\n").replace("\r", "\n")
+          .replace("\x00", "").lstrip("\ufeff")}
+    exec(src[src.index("\n", a) + 1:b], ns)   # noqa: S102
+    return ns
+
+
+_SPLIT = _load_split()
+split_plan = _SPLIT["_split_plan"]
+split_pick = _SPLIT["_split_pick"]
+
+
+def looks_like_notebook(code):
+    """內容是 Jupyter / Colab 筆記本（JSON），只是副檔名被改成 .py（真實繳交裡有 3 位同學這樣交）。"""
+    t = code.strip()
+    if not t.startswith("{") or ('"cells"' not in t and '"worksheets"' not in t):
+        return False
+    try:
+        obj = json.loads(t)
+    except ValueError:
+        return False
+    return isinstance(obj, dict) and ("cells" in obj or "worksheets" in obj)
+
+
+def siblings_of(qid, hint, qids):
+    """同一大題的子題（q1a、q1b…）。qid 不明就用檔名猜到的題號。"""
+    m = re.match(r"q(\d+)", qid or "")
+    num = m.group(1) if m else (hint or "")
+    if not num:
+        return []
+    return [q for q in qids if re.fullmatch(r"q%d[a-z]" % int(num), q)]
 
 CHECK_TEXT = {
     "loop": "沒有用到迴圈", "for": "沒有用到 for 迴圈", "while": "沒有用到 while 迴圈",
@@ -519,6 +576,8 @@ def main():
                     help="套用網頁版「測資與配分設定」匯出的 JSON（關掉的測資、自訂測資、配分）")
     ap.add_argument("--format-credit", type=float, choices=[0, 0.5, 1], default=0,
                     help="答案對但多印了說明文字（例如 BMI = 55.56）的測資，每筆給幾成分數（預設 0，只標出來）")
+    ap.add_argument("--no-split", action="store_true",
+                    help="不要自動拆開「a、b 寫在同一個檔案」的繳交（預設會依註解標記，或試跑猜測切點後各自批改）")
     ap.add_argument("--strict-output", action="store_true",
                     help="嚴格模式：程式印完正確答案後才出錯（例如結尾多一個 input()）也算錯")
     ap.add_argument("--lenient-input", action="store_true",
@@ -572,15 +631,52 @@ def main():
             print("找不到任何 .py 檔。")
             return 1
 
-        scores, detail = {}, {}
-        for disp, code in files:
-            qid = detect_qid(os.path.splitext(os.path.basename(disp))[0], qids) or detect_qid(disp, qids)
-            if qid not in problems:
-                print("略過（認不出題號，請改檔名或用網頁版指定）：%s" % disp)
-                continue
-            student = detect_student(disp)
+        scores, detail, split_notes = {}, {}, {}
+
+        def expand(disp, code):
+            """一個檔案 -> [(顯示路徑, 程式碼, 題號, 拆分資訊或 None)]。
+            a、b 寫在同一個檔案時，依註解標記拆開；沒有標記就試跑猜切點（兩半各自答對才拆）。"""
+            base = os.path.splitext(os.path.basename(disp))[0]
+            qid = detect_qid(base, qids) or detect_qid(disp, qids)
+            if args.no_split or disp.lower().endswith(".ipynb"):
+                return [(disp, code, qid, None)]
+            plan = split_plan(code, qids, base)
+            if plan["parts"]:
+                out = []
+                for i, part in enumerate(plan["parts"]):
+                    info = {"how": "marker", "label": part["label"], "lines": [part["start"], part["end"]],
+                            "from": disp, "unsure": bool(qid) and qid not in [x["qid"] for x in plan["parts"]]}
+                    out.append(("%s ▸ 區段%d" % (disp, i + 1), part["code"], part["qid"], info))
+                return out
+            sibs = siblings_of(qid, plan.get("hint"), qids)
+            if len(sibs) >= 2 and plan["cands"] and problems[sibs[0]]["tests"]:
+                tests = [(t["input"], t["expected"]) for t in problems[sibs[0]]["tests"][:2]]
+
+                def run(c, inp):
+                    out_, _err, st = run_one(c, inp + "\n", min(args.timeout, 3), workdir)
+                    return st == "ok", out_
+                hit = split_pick(plan["cands"], tests, run, code)
+                if hit:
+                    cand = hit[0]
+                    n = len(code.replace("\r\n", "\n").split("\n"))
+                    return [("%s ▸ 區段1" % disp, cand["a"], sibs[0],
+                             {"how": "guess", "label": "", "lines": [1, cand["line"] - 1], "from": disp, "unsure": True}),
+                            ("%s ▸ 區段2" % disp, cand["b"], sibs[1],
+                             {"how": "guess", "label": "", "lines": [cand["line"], n], "from": disp, "unsure": True})]
+            if not qid and len(sibs) >= 2 and not plan["parts"]:
+                # 只寫 q1.py、沒寫 a / b，而且只有一種寫法：看寫法符合哪一個子題的要求（a 用迴圈、b 用切片…）
+                feats = code_features(code)
+                ok = [q for q in sibs if feats is not None and not check_violations(problems[q].get("checks"), feats)]
+                if len(ok) == 1:
+                    return [(disp, code, ok[0], {"how": "style", "label": "", "lines": [1, len(code.split("\n"))],
+                                                 "from": disp, "unsure": True})]
+            return [(disp, code, qid, None)]
+
+        def run_file(student, disp, code, qid, split_info):
             prob = problems[qid]
             rec = {"score": 0.0, "passed": 0, "reok": 0, "viaAlt": 0, "cases": [], "file": disp}
+            if split_info:
+                rec["split"] = split_info
             tle_count = 0
             stopped = ""
             for t in prob["tests"]:
@@ -632,6 +728,24 @@ def main():
                 scores[student][qid] = rec
             detail.setdefault(student, {})[qid] = scores[student][qid]
 
+        for disp0, code0 in files:
+            student = detect_student(disp0)
+            entries = expand(disp0, code0)
+            if len(entries) > 1:
+                how = "依註解標記" if entries[0][3]["how"] == "marker" else "試跑猜測切點，請確認"
+                desc = "、".join("%s(第%d–%d行)" % (e[2].upper(), e[3]["lines"][0], e[3]["lines"][1]) for e in entries)
+                print("自動拆分（%s）：%s → %s" % (how, disp0, desc))
+                split_notes.setdefault(student, []).append("%s：%s（%s）" % (os.path.basename(disp0), desc, how))
+            if len(entries) == 1 and entries[0][3] and entries[0][3]["how"] == "style":
+                print("依寫法判斷子題（請確認）：%s → %s" % (disp0, entries[0][2].upper()))
+                split_notes.setdefault(student, []).append(
+                    "%s：沒寫 a/b，依寫法判斷是 %s（請確認）" % (os.path.basename(disp0), entries[0][2].upper()))
+            for disp, code, qid, split_info in entries:
+                if qid not in problems:
+                    print("略過（認不出題號，請改檔名或用網頁版指定）：%s" % disp)
+                    continue
+                run_file(student, disp, code, qid, split_info)
+
         width = max([len(s) for s in scores] + [6])
         header = "學號".ljust(width) + "".join(q.upper().rjust(8) for q in qids) + "總分".rjust(9)
         print("\n" + header)
@@ -653,10 +767,11 @@ def main():
             row.append(sum((scores[student].get(q) or {}).get("pe", 0) for q in qids) or "")
             row.append("；".join("%s %s" % (q.upper(), f) for q in qids
                                 for f in (scores[student].get(q) or {}).get("flags", [])))
+            row.append("；".join(split_notes.get(student, [])))
             rows.append(row)
 
         head = ["學號"] + ["%s(%g)" % (q.upper(), problems[q]["points"]) for q in qids] + \
-               ["總分"] + ["%s通過筆數" % q.upper() for q in qids] + ["格式不符筆數", "寫法提示"]
+               ["總分"] + ["%s通過筆數" % q.upper() for q in qids] + ["格式不符筆數", "寫法提示", "自動拆分"]
         def safe(v):                       # 避免 Excel 把 =、+ 開頭當公式
             v = "" if v is None else str(v)
             return "'" + v if v and v[0] in "=+-@" and not re.fullmatch(r"-?\d+(\.\d+)?", v) else v

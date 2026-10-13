@@ -102,7 +102,7 @@
       var self = this;
       if (self.booting) return self.booting;
       self.booting = new Promise(function (resolve, reject) {
-        var w = new Worker('assets/worker.js?v=2.6');
+        var w = new Worker('assets/worker.js?v=2.7');
         self.worker = w;
         w.onmessage = function (ev) {
           var m = ev.data;
@@ -179,6 +179,13 @@
           stderr: '執行超過時間限制（無窮迴圈，或程式還在等下一個 input()）'
         };
       });
+    },
+
+    /* a、b 寫在同一個檔案：依註解標記拆開，沒有標記就回傳候選切點。失敗回傳 null */
+    split: function (code, name) {
+      return this.send({ cmd: 'split', code: code, name: name, qids: QIDS }, 10000, function () {
+        return { plan: null };
+      }).then(function (m) { return m.plan || null; });
     },
 
     /* 靜態分析寫法（ast，不執行）。語法錯誤或失敗回傳 null */
@@ -300,6 +307,14 @@
     return (isIdWithLetter(last) || isIdDigits(last)) ? last.toUpperCase() : '';
   }
 
+  /* COOL 下載的每個檔案（或資料夾、zip）名稱開頭是「學號#_姓名_…」：b11902004#_王小明 (WANG)_355252_…_q1.py。
+     散裝 .py 沒有學號資料夾，不先認這個的話，會被外層 zip 的檔名搶走（d1234f56-…_submissions.zip 長得像學號） */
+  function idFromCool(segment) {
+    var m = segment.match(/^([A-Za-z][A-Za-z0-9]*)#_/);
+    if (!m) return '';
+    return (isIdWithLetter(m[1]) || isIdDigits(m[1])) ? m[1].toUpperCase() : '';
+  }
+
   /* 第二級：含字母的學號；第三級：純數字 */
   function idFromTokens(segment, wantLetters) {
     var toks = idTokens(segment);
@@ -329,6 +344,8 @@
 
   /* 題號：q3、Q3、q1a、q1_a、Q1(a)、第3題、第1題a、hw2_3b… qids 是目前作業的題號清單 */
   function detectQid(name, qids) {
+    // HW2Q1-a、hw2q3 這種作業編號黏在題號前面的寫法：先拿掉 HW2，不然 q 前面是數字會認不出來
+    name = name.replace(/HW[ \t\u3000]*\d+/ig, '_');
     var m = name.match(/(?:^|[^a-z0-9])q[ \t\u3000]*(\d{1,2})(?:[ \t\u3000]*[-_.]?[ \t\u3000]*\(?[ \t\u3000]*([a-z])[ \t\u3000]*\)?(?![a-z0-9]))?(?![0-9])/i);
     if (m) {
       var q = qidFromParts(m[1], m[2], qids);
@@ -365,6 +382,9 @@
     for (var i = parts.length - 1; i >= 0; i--) {        // 由內往外找
       segs.push(parts[i].replace(/\.zip$/i, ''));
     }
+    var cool = idFromCool(base);
+    for (i = 0; !cool && i < segs.length; i++) cool = idFromCool(segs[i]);
+    if (cool) return cool;
     for (var f = 0; f < ID_FINDERS.length; f++) {        // 先把所有層都用高優先級的規則掃過一輪
       for (i = 0; i < segs.length; i++) {
         var hit = ID_FINDERS[f](segs[i]);
@@ -408,6 +428,7 @@
       var m = parts[i].replace(/\.zip$/i, '').match(/#_(.+)$/);
       if (!m) continue;
       var rest = m[1]
+        .replace(/_\d{4,}(?:_.*)?$/, '')                                  // 流水號之後（編號、學號、HW2-1、(1)…）全部不是姓名
         .replace(/(?:_\d+)*(?:_[A-Za-z0-9]+)?[_\-\s]*HW\s*\d+$/i, '')   // _流水號_編號_學號_HW1
         .replace(/(?:_\d+)+$/, '')
         .replace(/^[_\-\s]+|[_\-\s]+$/g, '');
@@ -496,7 +517,8 @@
       runMeta: null,          // { mode, lenientRe, lenientInput, timeout, at }
       adjust: {},             // 學號 -> 題號 -> { delta, note }
       override: {},           // 學號 -> 題號 -> 測資編號 -> true/false：助教手動改判對錯
-      dirty: {}               // 批改後檔案有變動的學號
+      dirty: {},              // 批改後檔案有變動的學號
+      skipped: []             // 不支援而沒有收進來的檔案（.7z、.rar…），提醒助教自己解壓縮
     };
   }
 
@@ -591,6 +613,7 @@
     s.adjust = raw.adjust && typeof raw.adjust === 'object' ? raw.adjust : {};
     s.override = raw.override && typeof raw.override === 'object' ? raw.override : {};
     s.dirty = raw.dirty && typeof raw.dirty === 'object' ? raw.dirty : {};
+    s.skipped = Array.isArray(raw.skipped) ? raw.skipped.filter(function (x) { return typeof x === 'string'; }) : [];
     // 前一版是「格式不符打勾給分」：把那些勾換成逐筆改判正確，才不會掉分
     if (raw.peAccept && typeof raw.peAccept === 'object' && s.results) {
       Object.keys(raw.peAccept).forEach(function (st) {
@@ -691,7 +714,7 @@
     if (S.results && student) S.dirty[student] = true;
   }
 
-  function addSubmission(path, code, forcedQid) {
+  function addSubmission(path, code, forcedQid, analyzed) {
     var clean = path.replace(/\s*▸.*$/, '');
     var base = (clean.split('/').pop() || '').replace(/\.[^.]*$/, '');
     var sub = {
@@ -699,7 +722,9 @@
       path: path,
       student: detectStudent(clean),
       qid: forcedQid !== undefined ? forcedQid : (detectQid(base, QIDS) || detectQid(clean, QIDS)),
-      code: code
+      code: code,
+      // 是否已經檢查過「a、b 有沒有寫在同一個檔案」。指定了題號的（示範檔）不用檢查；沒指定就等 analyzePending 來檢查
+      analyzed: analyzed !== undefined ? analyzed : forcedQid !== undefined
     };
     S.submissions.push(sub);
     markDirty(sub.student);
@@ -709,10 +734,20 @@
   /* 老師規定交 .py；交 .ipynb 的依規定算錯、不幫同學轉檔。
      檔案還是收進來（成績表上看得到是交了 .ipynb），助教真的要破例，
      可以在步驟 2 按「拆成程式碼」把它展開成一格一格批改。 */
+  /* 內容其實是 Jupyter / Colab 筆記本（JSON），只是副檔名被改成 .py：真實繳交裡 3 位同學這樣交。
+     直接當 Python 跑只會得到一個莫名其妙的 SyntaxError，所以跟 .ipynb 一樣處理 */
+  function looksLikeNotebook(text) {
+    var t = String(text).replace(/^\s+/, '');
+    if (t.charAt(0) !== '{' || (t.indexOf('"cells"') < 0 && t.indexOf('"worksheets"') < 0)) return false;
+    return parseNotebook(text) !== null;
+  }
+
   function ingest(path, text) {
-    if (!/\.ipynb$/i.test(path)) { addSubmission(path, text); return; }
+    if (!/\.ipynb$/i.test(path) && !looksLikeNotebook(text)) { addSubmission(path, text); return; }
     var sub = addSubmission(path, text);
     sub.notebook = true;
+    sub.analyzed = true;
+    if (!/\.ipynb$/i.test(path)) sub.notebookAsPy = true;
   }
 
   function expandNotebook(sub) {
@@ -727,7 +762,7 @@
     var fileQid = detectQid(path.replace(/\.[^.]*$/, ''), QIDS);
     if (cells.length === 1) {
       addSubmission(path + '  ▸ cell 1', cells[0].code,
-        fileQid || guessQidFromText(cells[0].hint + '\n' + cells[0].code));
+        fileQid || guessQidFromText(cells[0].hint + '\n' + cells[0].code), false);
       return;
     }
     var guesses = cells.map(function (c) { return guessQidFromText(c.hint + '\n' + c.code); });
@@ -735,8 +770,222 @@
     cells.forEach(function (c, i) {
       var qid = guesses[i];
       if (!qid && !anyGuess && cells.length === QIDS.length) qid = QIDS[i];   // 格數剛好等於題數 -> 依序
-      addSubmission(path + '  ▸ cell ' + (i + 1), c.code, qid || '');
+      addSubmission(path + '  ▸ cell ' + (i + 1), c.code, qid || '', false);
     });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* a、b 寫在同一個檔案                                                    */
+  /*                                                                     */
+  /* 約兩成同學會把 a、b（有時是整份作業）寫進同一個 .py。                    */
+  /* 收進來之後交給 Python 靜態分析：                                        */
+  /*   1. 有註解標記（# Q1a、# (b)、# b. Use a loop…）-> 依標記切開           */
+  /*   2. 沒有標記 -> 找候選切點，用測資試跑，挑兩半都答對的那個（標「請確認」）  */
+  /* 切出來的每一段各自是一個「程式」，各自批改、各自給分，助教可以一段一段看。  */
+  /* 拆錯了隨時可以「還原成一個檔案」；也可以自己指定第幾行切開。               */
+  /* ------------------------------------------------------------------ */
+  var ANALYZING = null;
+
+  function baseName(path) {
+    return path.replace(/\s*▸.*$/, '').split('/').pop() || '';
+  }
+
+  /* 同一大題的子題：q1 -> [q1a, q1b]。沒有題號就用檔名猜到的數字 */
+  function siblingsOf(qid, hint) {
+    var m = String(qid || '').match(/^q(\d+)/);
+    var num = m ? m[1] : (hint || '');
+    if (!num) return [];
+    var re = new RegExp('^q' + parseInt(num, 10) + '[a-z]$');
+    return QIDS.filter(function (q) { return re.test(q); });
+  }
+
+  /* 偵測切點時比對答案用，很寬鬆（只是在找「哪裡切才對」，不是在評分；規則與 worker.js 的 _match 相同）：
+     2 = 去掉空白、不分大小寫後完全相同；1 = 答案包在輸出裡（多印了 "a. Loop result:" 這類說明文字）；0 = 不對 */
+  function canon(s) {
+    return String(s === undefined || s === null ? '' : s).replace(/\s+/g, '').toLowerCase();
+  }
+
+  function matchLevel(out, exp) {
+    var o = canon(out), e = canon(exp);
+    if (o === e) return 2;
+    return (e.length >= 3 && o.indexOf(e) >= 0) ? 1 : 0;
+  }
+
+  function cmpRank(a, b) {
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return a[i] > b[i] ? 1 : -1;
+    }
+    return 0;
+  }
+
+  /* 把 sub 換成幾段。每一段都記得原始檔，才能還原 */
+  function replaceWithParts(sess, sub, pieces, how, note) {
+    var idx = sess.submissions.indexOf(sub);
+    if (idx < 0) return;
+    var orig = { path: sub.path, code: sub.code, qid: sub.qid };
+    var parts = pieces.map(function (pc, i) {
+      return {
+        key: sess.nextKey++,
+        path: sub.path + '  ▸ 區段 ' + (i + 1),
+        student: sub.student,
+        qid: pc.qid || '',
+        code: pc.code,
+        analyzed: true,
+        unsure: !!pc.unsure,
+        split: { id: sub.key, i: i + 1, n: pieces.length, how: how, label: pc.label || '',
+                 lines: pc.lines, note: note || '', orig: orig }
+      };
+    });
+    Array.prototype.splice.apply(sess.submissions, [idx, 1].concat(parts));
+    if (sess === S) markDirty(sub.student);
+  }
+
+  /* 沒有標記：用前兩筆測資試跑每個候選切點，挑兩半都對的（規則與 tools/grade_cli.py 的 split_pick 相同） */
+  function splitByTrial(sess, sub, sibs, cands, cfg) {
+    var prob = activeProblemOf(sibs[0]);
+    if (!prob || !prob.tests.length) return Promise.resolve(false);
+    var tests = prob.tests.slice(0, 2);
+    var tmo = Math.min(cfg.timeout, 3000);
+    function level(code, t) {
+      return Engine.run(code, t.input + '\n', tmo).then(function (r) {
+        return r.status === 'ok' ? matchLevel(r.stdout, t.expected) : 0;
+      });
+    }
+    return level(sub.code, tests[0]).then(function (whole) {
+      if (whole === 2) return false;                 // 整份就答對了：是單一程式，不拆
+      var best = null, chain = Promise.resolve();
+      cands.forEach(function (c) {
+        chain = chain.then(function () {
+          var got = [0, 0], p = Promise.resolve();
+          [c.a, c.b].forEach(function (half, h) {
+            tests.forEach(function (t) {
+              p = p.then(function () { return level(half, t).then(function (n) { got[h] += n; }); });
+            });
+          });
+          return p.then(function () {
+            var rank = [got[0] >= 1 && got[1] >= 1 ? 1 : 0, got[0] + got[1], c.score, -c.line];
+            if (!best || cmpRank(rank, best.rank) > 0) best = { rank: rank, c: c, pre: got[0], suf: got[1] };
+          });
+        });
+      });
+      return chain.then(function () {
+        if (!best) return false;
+        var ok = (best.pre >= 1 && best.suf >= 1) || (best.pre + best.suf >= 2 && best.c.score >= 4);
+        if (!ok) return false;
+        var total = best.c.b.replace(/\n+$/, '').split('\n').length + best.c.line - 1;
+        replaceWithParts(sess, sub, [
+          { qid: sibs[0], code: best.c.a, lines: [1, best.c.line - 1], unsure: true },
+          { qid: sibs[1], code: best.c.b, lines: [best.c.line, total], unsure: true }
+        ], 'guess', '');
+        return 'split';
+      });
+    });
+  }
+
+  function analyzeOne(sess, sub, cfg) {
+    sub.analyzed = true;
+    return Engine.split(sub.code, baseName(sub.path)).then(function (plan) {
+      if (!plan) return false;
+      if (plan.parts && plan.parts.length) {
+        var qs = plan.parts.map(function (p) { return p.qid; });
+        replaceWithParts(sess, sub, plan.parts.map(function (p) {
+          return { qid: p.qid, code: p.code, lines: [p.start, p.end], label: p.label,
+                   unsure: !!p.implicit || (!!sub.qid && qs.indexOf(sub.qid) < 0) };
+        }), 'marker', plan.note);
+        return 'split';
+      }
+      var sibs = siblingsOf(sub.qid, plan.hint);
+      if (sibs.length < 2) return false;
+      var tried = plan.cands && plan.cands.length ? splitByTrial(sess, sub, sibs, plan.cands, cfg) : Promise.resolve(false);
+      return tried.then(function (hit) {
+        if (hit || sub.qid) return hit;
+        return resolveByStyle(sub, sibs);
+      });
+    });
+  }
+
+  /* 只寫 q1.py、沒寫 a / b，而且只有一種寫法：看它符合哪一個子題的寫法要求（a 用迴圈、b 用切片…）。
+     剛好只符合一個才猜，並標「請確認」；兩個都符合或都不符合就留給助教 */
+  function resolveByStyle(sub, sibs) {
+    return Engine.features(sub.code).then(function (f) {
+      if (!f) return false;
+      var ok = sibs.filter(function (q) {
+        var p = problemOf(q);
+        return p && !checkViolations(p.checks || [], f).length;
+      });
+      if (ok.length !== 1) return false;
+      sub.qid = ok[0];
+      sub.unsure = true;
+      sub.styleGuess = true;
+      return 'style';
+    });
+  }
+
+  /* 還沒檢查過的檔案逐一檢查。可以重複呼叫：已經在跑就等它跑完 */
+  function analyzePending() {
+    if (ANALYZING) return ANALYZING;
+    var sess = S;
+    var cfg = settings();
+    var todo = sess.submissions.filter(function (x) { return !x.analyzed && !x.notebook && !x.split; });
+    if (!todo.length || !cfg.autoSplit) {
+      if (sess.submissions.length) ensureEngine().catch(function () {});
+      return Promise.resolve();
+    }
+    $('subsStat').textContent = '正在檢查有沒有 a、b 寫在同一個檔案…';
+    var did = 0, styled = 0;
+    ANALYZING = ensureEngine().then(function () {
+      var chain = Promise.resolve();
+      todo.forEach(function (sub) {
+        chain = chain.then(function () {
+          if (S !== sess || sess.submissions.indexOf(sub) < 0) return;
+          return analyzeOne(sess, sub, cfg).then(function (hit) {
+            if (hit === 'style') styled++; else if (hit) did++;
+          }, function () { /* 這個檔案分析失敗就照原樣批改 */ });
+        });
+      });
+      return chain;
+    }).catch(function () { /* Python 起不來：照原樣批改，批改時會顯示同樣的錯 */ }).then(function () {
+      ANALYZING = null;
+      if (S === sess) {
+        persist();
+        renderFiles();
+        renderResultsIfAny();
+        if (did || styled) {
+          toast((did ? '有 ' + did + ' 個檔案把好幾題寫在一起，已自動拆開。' : '') +
+            (styled ? '有 ' + styled + ' 個檔案沒寫 a/b，依寫法猜了子題。' : '') +
+            '請在步驟 2 看一下對不對。', 'warn', 9000);
+        }
+      }
+      if (sess.submissions.some(function (x) { return !x.analyzed && !x.notebook && !x.split; }) && S === sess) {
+        return analyzePending();                       // 分析期間又加了新的檔案
+      }
+    });
+    return ANALYZING;
+  }
+
+  function undoSplit(sub) {
+    var id = sub.split.id, orig = sub.split.orig, student = sub.student;
+    S.submissions = S.submissions.filter(function (x) { return !(x.split && x.split.id === id); });
+    S.submissions.push({ key: S.nextKey++, path: orig.path, student: student, qid: orig.qid || '',
+                         code: orig.code, analyzed: true });
+    markDirty(student);
+    persist();
+    renderFiles();
+    renderResultsIfAny();
+  }
+
+  /* 助教自己指定：第 line 行起是第二段 */
+  function manualSplit(sub, line) {
+    var lines = sub.code.replace(/\r\n?/g, '\n').replace(/\n+$/, '').split('\n');
+    var sibs = siblingsOf(sub.qid, '');
+    var a = lines.slice(0, line - 1).join('\n') + '\n', b = lines.slice(line - 1).join('\n') + '\n';
+    replaceWithParts(S, sub, [
+      { qid: sibs.length >= 2 ? sibs[0] : '', code: a, lines: [1, line - 1] },
+      { qid: sibs.length >= 2 ? sibs[1] : '', code: b, lines: [line, lines.length] }
+    ], 'manual', '');
+    persist();
+    renderFiles();
+    renderResultsIfAny();
   }
 
   /* 學生的 .py 可能是 Windows 記事本存的：UTF-8 BOM、UTF-16，或台灣常見的 Big5。
@@ -792,6 +1041,8 @@
           jobs.push(entry.async('arraybuffer').then(function (buf) {
             ingest(prefix + rel, decodeBytes(buf));
           }));
+        } else if (/\.(7z|rar|tar|gz|tgz)$/i.test(rel)) {
+          S.skipped.push(prefix + rel);
         } else if (/\.zip$/i.test(rel) && depth < 3) {
           jobs.push(entry.async('blob').then(function (b) {
             return loadZip(b, prefix + rel.replace(/\.zip$/i, '') + '/', depth + 1);
@@ -816,6 +1067,7 @@
       if (/\.zip$/i.test(f.name)) {
         return loadZip(f, f.name.replace(/\.zip$/i, '') + '/', 1);
       }
+      if (/\.(7z|rar|tar|gz|tgz)$/i.test(f.name)) { S.skipped.push(path); return Promise.resolve(); }
       if (!/\.(py|ipynb)$/i.test(f.name) || skipPath(path)) return Promise.resolve();
       return readFileText(f).then(function (txt) { ingest(path, txt); });
     });
@@ -823,7 +1075,8 @@
       INTAKING--;
       var added = S.submissions.slice(before);
       if (!added.length) {
-        toast('沒有找到任何 .py / .ipynb 檔。', 'warn');
+        toast(S.skipped.length ? '沒有找到 .py / .ipynb，有 ' + S.skipped.length + ' 個壓縮檔格式不支援（.7z、.rar…），請先解壓縮。'
+          : '沒有找到任何 .py / .ipynb 檔。', 'warn', 8000);
       } else {
         var who = {};
         added.forEach(function (s) { who[s.student] = true; });
@@ -833,7 +1086,7 @@
       persist();
       renderFiles();
       renderResultsIfAny();
-      if (S.submissions.length) ensureEngine().catch(function () {});   // 先暖機
+      if (S.submissions.length) analyzePending();   // 先暖機，順便檢查有沒有 a、b 寫在同一個檔案
     });
   }
 
@@ -841,7 +1094,7 @@
     return new Promise(function (resolve) {
       if (entry.isFile) {
         entry.file(function (f) {
-          if (/\.(py|ipynb|zip)$/i.test(f.name)) {
+          if (/\.(py|ipynb|zip|7z|rar|tar|gz|tgz)$/i.test(f.name)) {
             try { Object.defineProperty(f, 'webkitRelativePath', { value: prefix + f.name }); } catch (e) { /* noop */ }
             out.push(f);
           }
@@ -908,11 +1161,21 @@
     if (RUN || INTAKING) { toast('批改或載入檔案進行中，等一下再搬。', 'warn'); return; }
     var moving = S.submissions.filter(function (s) { return keys.indexOf(s.key) >= 0; });
     S.submissions = S.submissions.filter(function (s) { return keys.indexOf(s.key) < 0; });
+    // 拆出來的幾段是照舊作業的題號切的，搬過去要還原成原本的檔案，到新作業重新檢查
+    var seenSplit = {};
+    moving = moving.filter(function (s) {
+      if (!s.split) return true;
+      if (seenSplit[s.split.id]) return false;
+      seenSplit[s.split.id] = true;
+      return true;
+    }).map(function (s) {
+      return s.split ? { path: s.split.orig.path, code: s.split.orig.code, student: s.student } : s;
+    });
     moving.forEach(function (s) { markDirty(s.student); });
     pendingMove = null;
     persist();
     switchHw(target).then(function () {
-      moving.forEach(function (s) { addSubmission(s.path, s.code); });
+      moving.forEach(function (s) { ingest(s.path, s.code); });
       persist();
       renderFiles();
       renderResultsIfAny();
@@ -985,6 +1248,24 @@
     return base + (cell ? ' ' + cell : '');
   }
 
+  function subInfoText(sub) {
+    if (sub.split) {
+      var sp = sub.split, rng = '第 ' + sp.lines[0] + '–' + sp.lines[1] + ' 行';
+      if (sp.how === 'marker') return '自動拆出（依註解' + (sp.label ? '「' + sp.label + '」' : '') + '，' + rng + '）' + (sub.unsure ? '，請確認' : '');
+      if (sp.how === 'guess') return '自動拆出（試跑猜的切點，' + rng + '），請確認';
+      return '手動拆出（' + rng + '）';
+    }
+    if (sub.unsure) return sub.styleGuess ? '沒寫 a/b，依寫法猜的，請確認' : '自動配對，請確認';
+    return lineCount(sub.code) + ' 行';
+  }
+
+  function splitTitle(sub) {
+    var sp = sub.split;
+    return '原本是一個檔案（' + baseName(sp.orig.path) + '，共 ' + lineCount(sp.orig.code) + ' 行），' +
+      (sp.how === 'marker' ? '依註解標記切成 ' + sp.n + ' 段。' : sp.how === 'guess' ? '沒有標記，試跑前兩筆測資挑出兩半都答對的切點。' : '手動指定切點。') +
+      (sp.note ? '\n' + sp.note : '');
+  }
+
   function missingText(missing) {
     if (missing.length > 3) {
       return '缺 ' + missing.slice(0, 3).map(qLabel).join('、') + ' 等 ' + missing.length + ' 題';
@@ -993,7 +1274,10 @@
   }
 
   function statusPill(g) {
-    if (g.nb && g.nb === g.files.length) return { cls: 'bad', text: '交 .ipynb（依規定算錯）' };
+    if (g.nb && g.nb === g.files.length) {
+      var allPy = g.files.every(function (f) { return f.notebookAsPy; });
+      return { cls: 'bad', text: allPy ? '.py 內容是 ipynb（0 分）' : '交 .ipynb（依規定算錯）' };
+    }
     if (g.unknown) return { cls: 'bad', text: g.unknown + ' 個檔案待指定題號' };
     if (g.missing.length === QIDS.length) return { cls: 'bad', text: '沒有可批改的題目' };
     if (g.unsure) return { cls: 'warn', text: '子題請確認' };
@@ -1148,7 +1432,8 @@
           if (sub.notebook) {
             // 依規定 .ipynb 算錯；助教要破例，按這裡把它拆成一格一格的程式碼
             var nbBtn = el('button', 'btn ghost small', '拆成程式碼');
-            nbBtn.title = '依老師規定 .ipynb 算錯、不轉檔。真的要破例才按：會拆成一格一格的程式碼，再指定題號批改';
+            nbBtn.title = (sub.notebookAsPy ? '這個 .py 其實是筆記本內容（JSON）。' : '') +
+              '依老師規定 .ipynb 算錯、不轉檔。真的要破例才按：會拆成一格一格的程式碼，再指定題號批改';
             nbBtn.onclick = function () {
               if (!confirm('依規定交 .ipynb 算錯。確定要破例把這個檔案拆成程式碼來批改嗎？')) return;
               expandNotebook(sub);
@@ -1159,8 +1444,39 @@
             };
             row.appendChild(nbBtn);
           } else {
-            row.appendChild(el('span', 'muted small sub-lines',
-              sub.unsure ? '自動配對，請確認' : lineCount(sub.code) + ' 行'));
+            var acts = el('span', 'sub-acts');
+            var info = el('span', 'muted small sub-lines' + (sub.unsure ? ' warn-text' : ''), subInfoText(sub));
+            if (sub.split) info.title = splitTitle(sub);
+            acts.appendChild(info);
+            if (sub.unsure) {
+              var okBtn = el('button', 'btn ghost small', '確認');
+              okBtn.title = '我看過了，這樣對';
+              okBtn.onclick = function () {
+                sub.unsure = false;
+                persist();
+                renderFiles();
+              };
+              acts.appendChild(okBtn);
+            }
+            if (sub.split) {
+              var undo = el('button', 'btn ghost small', '還原成一個檔案');
+              undo.title = '拆錯了：把拆出來的幾段合回原本的檔案（之後不會再自動拆）';
+              undo.onclick = function () { undoSplit(sub); };
+              acts.appendChild(undo);
+            } else {
+              var man = el('button', 'btn ghost small', '拆成兩段…');
+              man.title = '自己指定第二段從第幾行開始（例如 a、b 寫在同一個檔案、程式沒有拆對）';
+              man.onclick = function () {
+                var n = lineCount(sub.code);
+                var v = prompt('這個檔案共 ' + n + ' 行。第二段（例如 b）從第幾行開始？\n（輸入 2 ~ ' + n + '）', '');
+                var line = parseInt(v, 10);
+                if (!v) return;
+                if (!(line >= 2 && line <= n)) { toast('行號要在 2 到 ' + n + ' 之間。', 'warn'); return; }
+                manualSplit(sub, line);
+              };
+              acts.appendChild(man);
+            }
+            row.appendChild(acts);
           }
 
           var del = el('button', 'btn ghost danger small', '移除');
@@ -1191,8 +1507,22 @@
       msgs.push('有 ' + totalUnknown + ' 個檔案沒辨識出題號，請展開指定或按「自動配對」，未指定的不會批改。');
     }
     if (totalUnsure) {
-      msgs.push('有 ' + totalUnsure + ' 個檔案是自動配對到子題（a/b 輸入輸出一樣，試跑分不出來），請展開確認。');
+      msgs.push('有 ' + totalUnsure + ' 個檔案的子題是自動猜的（a/b 輸入輸出一樣，分不出來；或是 a、b 寫在同一個檔案時猜的切點），請展開確認。');
     }
+    var nSplit = {};
+    S.submissions.forEach(function (x) { if (x.split) nSplit[x.split.id] = true; });
+    if (Object.keys(nSplit).length) {
+      msgs.push('有 ' + Object.keys(nSplit).length + ' 個檔案把好幾題寫在一起，已自動拆開各自批改（展開可看切在哪裡，拆錯可以還原）。');
+    }
+    if (S.skipped.length) {
+      msgs.push('有 ' + S.skipped.length + ' 個壓縮檔不支援，沒有收進來，請先自己解壓縮再放進來：' +
+        S.skipped.slice(0, 4).map(function (x) { return x.split('/').pop(); }).join('、') +
+        (S.skipped.length > 4 ? ' 等' : '') + '。');
+    }
+    var nNb = S.submissions.filter(function (x) { return x.notebook; }).length;
+    var nNbPy = S.submissions.filter(function (x) { return x.notebookAsPy; }).length;
+    if (nNbPy) msgs.push('有 ' + nNbPy + ' 個 .py 其實是 Jupyter 筆記本（內容是 JSON，只是副檔名改成 .py），依規定算錯。');
+    $('expandNotebooks').hidden = !nNb;
     if (anyDup) msgs.push('同一位學生的同一題有多份，全部都會跑，成績取最高並標 ⚠。');
     if (nNotRoster) msgs.push(nNotRoster + ' 個學號不在修課名單上，可能是學號辨識錯了。');
     $('fileWarn').textContent = msgs.join(' ');
@@ -1478,7 +1808,8 @@
       mode: radioVal('compareMode') || 'strict',
       timeout: Math.max(1, parseInt($('timeout').value, 10) || 8) * 1000,
       lenientRe: radioVal('lenientRe') !== '0',
-      lenientInput: radioVal('lenientInput') === '1'
+      lenientInput: radioVal('lenientInput') === '1',
+      autoSplit: radioVal('autoSplit') !== '0'
     };
   }
 
@@ -1490,6 +1821,7 @@
     if (s.mode === 'loose') bits.push('空白、大小寫不同都不算錯');
     if (!s.lenientRe) bits.push('程式最後才出錯算錯');
     if (s.lenientInput) bits.push('接受一行拆多次 input()');
+    if (!s.autoSplit) bits.push('不自動拆開 a、b 寫在同一個檔案的繳交');
     if (s.timeout !== 8000) bits.push('每筆最多 ' + s.timeout / 1000 + ' 秒');
     $('rulesSummary').hidden = !bits.length;
     $('rulesSummary').textContent = '注意，進階設定已改：' + bits.join('、');
@@ -1507,6 +1839,7 @@
       if (s.timeout) $('timeout').value = Math.round(s.timeout / 1000);
       setRadio('lenientRe', s.lenientRe === false ? '0' : '1');
       setRadio('lenientInput', s.lenientInput ? '1' : '0');
+      setRadio('autoSplit', s.autoSplit === false ? '0' : '1');
 
     } catch (e) { /* noop */ }
   }
@@ -1580,7 +1913,8 @@
   function gradeList(list, label) {
     // 這一輪要批的檔案先複製一份固定下來：學號、題號、程式碼都以開跑那一刻為準
     list = list.map(function (s) {
-      return { key: s.key, path: s.path, student: s.student, qid: s.qid, code: s.code, notebook: !!s.notebook };
+      return { key: s.key, path: s.path, student: s.student, qid: s.qid, code: s.code, notebook: !!s.notebook,
+               notebookAsPy: !!s.notebookAsPy };
     });
     var cfg = settings();
     ensureEngine().catch(function () {});
@@ -1632,8 +1966,11 @@
         var tleCount = 0;
         if (sub.notebook) {
           // 依老師規定：交 .ipynb 不幫忙轉檔，直接算錯（助教要破例可以逐筆改判，或在步驟 2 拆成程式碼）
-          stopped = '交的是 Colab / Jupyter 筆記本（.ipynb），依規定不轉檔，這題算錯';
+          stopped = sub.notebookAsPy
+            ? '這個 .py 檔案裡面其實是 Jupyter 筆記本（ipynb 的 JSON，只是副檔名改成 .py），依規定這題 0 分'
+            : '交的是 Colab / Jupyter 筆記本（.ipynb），依規定不轉檔，這題算錯';
           rec.notebook = true;
+          rec.notebookPy = !!sub.notebookAsPy;
         }
         prob.tests.forEach(function (t) {
           inner = inner.then(function () {
@@ -1730,6 +2067,10 @@
   /* 批改學生的作業並把結果併進 S.results。
      students = null 表示全部重批；否則只重批這幾位（設定必須沒變，才不會混用兩把尺）。 */
   function gradeStudents(students) {
+    return analyzePending().then(function () { return gradeStudentsNow(students); });
+  }
+
+  function gradeStudentsNow(students) {
     var sig = currentSig();
     var full = !students;
     if (!full && S.results && S.runSig !== sig) {
@@ -1943,6 +2284,11 @@
         inRoster: !!roster[id], cells: {}, total: 0, adjTotal: 0, flags: [],
         adjusted: false, conflict: false, dirty: !!S.dirty[id], pe: 0, peQids: [], overrides: 0,
         notebook: S.submissions.some(function (s) { return s.student === id && s.notebook; }),
+        notebookPy: S.submissions.some(function (s) { return s.student === id && s.notebookAsPy; }),
+        splits: Object.keys(S.submissions.reduce(function (m, s) {
+          if (s.student === id && s.split) m[s.split.id] = true;
+          return m;
+        }, {})).length,
         pending: false
       };
       // 有檔案卻沒成績：多半是題號沒指定。只交 .ipynb 的例外——那是依規定算錯，不是漏批
@@ -2133,7 +2479,7 @@
           if (nOv) { td.className += ' adj'; td.appendChild(el('span', 'mark adj', '✎')); }
           var tip = [passedOf(row.id, p.id, rec) + '/' + rec.cases.length + ' 筆對' +
             (rec.pe ? '，' + rec.pe + ' 筆答案對但格式不符（依規定算錯）' : '') +
-            (nOv ? '，助教改判 ' + nOv + ' 筆' : '') + (rec.notebook ? '，交的是 .ipynb（依規定算錯）' : '')];
+            (nOv ? '，助教改判 ' + nOv + ' 筆' : '') + (rec.notebook ? (rec.notebookPy ? '，.py 內容是 ipynb 筆記本（0 分）' : '，交的是 .ipynb（依規定算錯）') : '')];
           if (a && a.delta) tip.push('自動 ' + rec.score + '，手動 ' + (a.delta > 0 ? '+' : '') + a.delta + (a.note ? '（' + a.note + '）' : ''));
           if (rec.flags && rec.flags.length) tip.push('寫法提示：' + rec.flags.join('、'));
           if (rec.conflict) tip.push('有多份檔案，取最高分');
@@ -2159,7 +2505,11 @@
         fb.title = row.flags.join('\n');
         note.appendChild(fb);
       }
-      if (row.notebook) note.appendChild(el('span', 'badge bad', '交 .ipynb'));
+      if (row.notebook) {
+        var nbb = el('span', 'badge bad', row.notebookPy ? '.py 內容是 ipynb · 0 分' : '交 .ipynb');
+        if (row.notebookPy) nbb.title = '.py 檔案裡面其實是 Jupyter 筆記本（ipynb 的 JSON），副檔名被改成 .py。依規定該題 0 分';
+        note.appendChild(nbb);
+      }
       if (row.pe) {
         var pb = el('span', 'badge warn', '格式不符 ' + row.pe);
         pb.title = row.pe + ' 筆答案對、但多印了說明文字或空白（' + row.peQids.map(qLabel).join('、') +
@@ -2403,11 +2753,23 @@
     body.appendChild(line);
     var fp = el('p', 'muted small path', '檔案：' + rec.file);
     body.appendChild(fp);
+    var subRef = S.submissions.filter(function (x) { return x.key === rec.key; })[0];
+    if (subRef && subRef.split) {
+      var sbox = el('details', 'splitbox');
+      sbox.appendChild(el('summary', 'small', '這一題是從 ' + baseName(subRef.split.orig.path) + ' 自動拆出來的（' +
+        subInfoText(subRef) + '）。點開看整份原始檔案，確認切得對不對'));
+      sbox.appendChild(codeBlock(subRef.split.orig.code));
+      body.appendChild(sbox);
+    } else if (subRef && subRef.styleGuess) {
+      body.appendChild(el('p', 'warn small', '這個檔案沒有寫 a/b，依寫法（' + (prob.requirement || '') + '）猜成這一題，請看一下程式碼。'));
+    }
     if (rec.conflict) body.appendChild(el('p', 'warn small', '⚠ 這位學生這一題交了不只一份，這裡顯示分數最高的那一份。'));
     if (rec.quick) body.appendChild(el('p', 'warn small', '這是「快速篩檢」的結果，錯一筆後的測資沒有跑。'));
 
     if (rec.notebook) {
-      body.appendChild(el('p', 'warn small', '交的是 .ipynb，依規定不轉檔、算錯。要破例：回步驟 2 在這個檔案按「拆成程式碼」後重批，或在下面逐筆改判。'));
+      body.appendChild(el('p', 'warn small', rec.notebookPy
+        ? '這個 .py 檔案裡面其實是 Jupyter 筆記本（ipynb 的 JSON，只是副檔名改成 .py），依規定這題 0 分。要破例：回步驟 2 在這個檔案按「拆成程式碼」後重批，或在下面逐筆改判。'
+        : '交的是 .ipynb，依規定不轉檔、算錯。要破例：回步驟 2 在這個檔案按「拆成程式碼」後重批，或在下面逐筆改判。'));
     }
 
     /* 寫法要求 */
@@ -2634,7 +2996,8 @@
       else if (!r.submitted && !r.notebook) status.push('未繳交');
       if (ROSTER.length && !r.inRoster) status.push('不在名單');
       if (r.conflict) status.push('有重複檔案');
-      if (r.notebook) status.push('交 .ipynb（依規定算錯）');
+      if (r.notebook) status.push(r.notebookPy ? '.py 內容是 ipynb 筆記本（0 分）' : '交 .ipynb（依規定算錯）');
+      if (r.splits) status.push('a/b 寫在同一個檔案，自動拆開 ' + r.splits + ' 個檔案');
       if (r.pe) status.push('格式不符 ' + r.pe + ' 筆（依規定算錯）');
       if (r.overrides) status.push('助教改判 ' + r.overrides + ' 筆');
       if (r.dirty) status.push('需重批');
@@ -2665,7 +3028,7 @@
     var ACTIVE = activeProblems();
     var out = [HW.title + ' 總分 ' + (row.submitted ? row.total : 0) + ' / ' + round2(totalPoints())];
     if (!row.submitted) {
-      out.push(row.notebook ? '交的是 .ipynb，依規定不轉檔、算錯' : '未繳交');
+      out.push(row.notebook ? (row.notebookPy ? '.py 檔案裡面其實是 Jupyter 筆記本（ipynb），請匯出成真正的 .py，這次依規定 0 分' : '交的是 .ipynb，依規定不轉檔、算錯') : '未繳交');
       return out.join('\n');
     }
     ACTIVE.forEach(function (p) {
@@ -2675,7 +3038,7 @@
       var line = qLabel(p.id) + '：' + row.cells[p.id] + ' / ' + rec.max;
       var nOk = passedOf(row.id, p.id, rec);
       if (rec.notebook) {
-        out.push(line + '（交的是 .ipynb，依規定不轉檔、算錯）');
+        out.push(line + (rec.notebookPy ? '（.py 檔案裡面其實是 Jupyter 筆記本，依規定 0 分）' : '（交的是 .ipynb，依規定不轉檔、算錯）'));
         return;
       }
       line += nOk === rec.cases.length ? '（全部測資通過）' : '（' + nOk + '/' + rec.cases.length + ' 筆對）';
@@ -2686,7 +3049,7 @@
           if (ov === true) out.push('  #' + c.n + ' 助教改判為正確');
           return;
         }
-        if (ov === false) { out.push('  #' + c.n + ' 助教改判為錯誤'); return; }
+        if (ov === false) { out.push('  #' + c.n + ' 沒有照格式'); return; }
         if (c.status === 'skip') return;
         if (c.status === 'pe') {
           out.push('  #' + c.n + ' 格式不符，算錯：應只輸出 ' + shortIO(c.expected) + '，你的輸出 ' + shortIO(c.actual) +
@@ -3213,7 +3576,18 @@
       onlyProblem = $('onlyProblem').checked;
       renderFiles();
     };
-    $('autoMatch').onclick = autoMatch;
+    $('autoMatch').onclick = function () { analyzePending().then(autoMatch); };
+    $('expandNotebooks').onclick = function () {
+      if (RUN) return;
+      var nbs = S.submissions.filter(function (x) { return x.notebook; });
+      if (!nbs.length) return;
+      if (!confirm('依規定交 .ipynb 算錯。確定要破例，把這 ' + nbs.length + ' 個筆記本都拆成程式碼來批改嗎？')) return;
+      nbs.forEach(expandNotebook);
+      persist();
+      renderFiles();
+      renderResultsIfAny();
+      analyzePending();
+    };
 
     $('loadDemo').onclick = function () {
       if (RUN) return;
@@ -3222,7 +3596,7 @@
       ensureEngine().catch(function () {});
       var tag = HW.title.replace(/\s+/g, '');
       QIDS.forEach(function (q) {
-        if (SOLUTIONS[q]) addSubmission('參考解答_' + tag + '/' + q + '.py', SOLUTIONS[q]);
+        if (SOLUTIONS[q]) addSubmission('參考解答_' + tag + '/' + q + '.py', SOLUTIONS[q], undefined, true);
       });
       Object.keys(MUTANTS).forEach(function (name) {
         var q = name.split('_')[0];
