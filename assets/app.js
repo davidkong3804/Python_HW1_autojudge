@@ -102,7 +102,7 @@
       var self = this;
       if (self.booting) return self.booting;
       self.booting = new Promise(function (resolve, reject) {
-        var w = new Worker('assets/worker.js?v=2.8');
+        var w = new Worker('assets/worker.js?v=2.9');
         self.worker = w;
         w.onmessage = function (ev) {
           var m = ev.data;
@@ -675,9 +675,20 @@
     return out.map(function (s) { return s.trim(); });
   }
 
-  /* 吃 COOL / Excel 匯出的名單：每一列找「長得像學號」的那格，旁邊第一個不像學號的就是姓名 */
+  /* 「角色」欄的值（學生、旁聽生、助教…）不是姓名。HW2 匯入名單後，姓名欄整排變成「學生」就是抓錯成這一欄 */
+  var ROLE_WORD = /^(學生|旁聽生|旁聽|教師|老師|教授|助教|教學助理|課程設計者|學習者|student|students|teacher|ta|observer|designer|learner|auditor|active|enrolled|inactive|invited)$/i;
+
+  /* 看起來不是人名的格子：數字、學號、email、角色、班別（IM1011-02）、日期 */
+  function notNameCell(c) {
+    return !c || /^[\d\s.\-\/:]+$/.test(c) || isIdWithLetter(c) || isIdDigits(c) || /@/.test(c) ||
+      ROLE_WORD.test(c) || /^[A-Za-z]{2,}\d+[-\w]*$/.test(c);
+  }
+
+  /* 吃 COOL / Excel 匯出的名單。
+     1. 有標題列（姓名 / Name…）就用標題找姓名欄，最準
+     2. 沒有就每一列找「長得像學號」的那格，旁邊第一個「像人名」的就是姓名（角色、email、班別都會跳過） */
   function parseRoster(text) {
-    var seen = {}, out = [];
+    var seen = {}, out = [], nameCol = -1, loose = -1;
     text.replace(/\r\n?/g, '\n').split('\n').forEach(function (line) {
       if (!line.trim()) return;
       var cells = splitCsvLine(line);
@@ -685,15 +696,26 @@
       for (var i = 0; i < cells.length; i++) {
         if (isIdWithLetter(cells[i]) || isIdDigits(cells[i])) { idIdx = i; break; }
       }
-      if (idIdx < 0) return;                      // 標題列或空白列
+      if (idIdx < 0) {                            // 標題列或空白列：順便記下姓名欄在第幾欄
+        if (nameCol < 0) {
+          cells.forEach(function (h, k) {
+            if (nameCol < 0 && /^(姓名|學生姓名|中文姓名|name|full ?name|student ?name|display ?name|sortable ?name)$/i.test(h)) nameCol = k;
+            else if (loose < 0 && /^(學生|student)$/i.test(h)) loose = k;
+          });
+          if (nameCol < 0) nameCol = loose;
+        }
+        return;
+      }
       var id = cells[idIdx].toUpperCase();
       if (seen[id]) return;
       var name = '';
-      for (i = 0; i < cells.length; i++) {
-        if (i === idIdx || !cells[i]) continue;
-        if (/^[\d\s.\-]+$/.test(cells[i]) || isIdWithLetter(cells[i]) || /@/.test(cells[i])) continue;
-        name = cells[i];
-        break;
+      if (nameCol >= 0 && !notNameCell(cells[nameCol])) name = cells[nameCol];
+      if (!name) {
+        for (i = 0; i < cells.length; i++) {
+          if (i === idIdx || notNameCell(cells[i])) continue;
+          name = cells[i];
+          break;
+        }
       }
       seen[id] = true;
       out.push({ id: id, name: name });
@@ -3033,22 +3055,47 @@
     return toCsvText(rows);
   }
 
-  function shortIO(s) {
+  /* 回饋裡顯示輸入 / 輸出：換行用 ⏎ 表示，太長才截斷（同學要看得出自己印了什麼，所以放寬到 200 字） */
+  function shortIO(s, max) {
     s = String(s === undefined || s === null ? '' : s).replace(/\n+$/, '').replace(/\n/g, '⏎');
-    return s.length > 60 ? s.slice(0, 60) + '…' : s;
+    max = max || 200;
+    return s.length > max ? s.slice(0, max) + '…（共 ' + s.length + ' 字，後面省略）' : s;
   }
 
-  /* 給學生看的回饋：每題分數、錯的那幾筆的輸入 / 應輸出 / 你的輸出、手動調整原因 */
+  /* 從 Traceback 抓出「哪一種錯、第幾行」：NameError: name 'x' is not defined（第 12 行） */
+  function errSummary(stderr) {
+    var text = String(stderr || '').trim();
+    if (!text) return '';
+    var lines = text.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+    var kind = '';
+    for (var i = lines.length - 1; i >= 0; i--) {
+      if (/^[A-Za-z_.]*(Error|Exception|Exit|Interrupt)\b/.test(lines[i])) { kind = lines[i]; break; }
+    }
+    if (!kind) kind = lines[lines.length - 1];
+    var ln = '', m, re = /File "student\.py", line (\d+)/g;
+    while ((m = re.exec(text)) !== null) ln = m[1];
+    kind = kind.replace(/（常見原因.*$/, '').trim();
+    return kind + (ln ? '（第 ' + ln + ' 行）' : '');
+  }
+
   function feedbackText(row) {
     var ACTIVE = activeProblems();
-    var out = [HW.title + ' 總分 ' + (row.submitted ? row.total : 0) + ' / ' + round2(totalPoints())];
+    var okTotal = 0, caseTotal = 0;
+    ACTIVE.forEach(function (p) {
+      var r = row.recs[p.id];
+      if (!r || r.notebook) { caseTotal += p.tests.length; return; }
+      okTotal += passedOf(row.id, p.id, r);
+      caseTotal += r.cases.length;
+    });
+    var out = [HW.title + ' 總分 ' + (row.submitted ? row.total : 0) + ' / ' + round2(totalPoints()) +
+      (row.submitted && caseTotal ? '（測資答對 ' + okTotal + ' / ' + caseTotal + ' 筆）' : '')];
     if (!row.submitted) {
       out.push(row.notebook ? (row.notebookPy ? '.py 檔案裡面其實是 Jupyter 筆記本（ipynb），請匯出成真正的 .py，這次依規定 0 分' : '交的是 .ipynb，依規定不轉檔、算錯') : '未繳交');
       return out.join('\n');
     }
     ACTIVE.forEach(function (p) {
       var rec = row.recs[p.id];
-      if (!rec) { out.push(qLabel(p.id) + '：未繳交（0 分）'); return; }
+      if (!rec) { out.push(qLabel(p.id) + '：未繳交（0 分）：沒有收到 ' + p.id + '.py'); return; }
       var a = adjOf(row.id, p.id);
       var line = qLabel(p.id) + '：' + row.cells[p.id] + ' / ' + rec.max;
       var nOk = passedOf(row.id, p.id, rec);
@@ -3058,27 +3105,47 @@
       }
       line += nOk === rec.cases.length ? '（全部測資通過）' : '（' + nOk + '/' + rec.cases.length + ' 筆對）';
       out.push(line);
+      var sub = S.submissions.filter(function (x) { return x.key === rec.key; })[0];
+      if (sub && sub.split) {
+        out.push('  （這題是從 ' + baseName(sub.split.orig.path) + ' 的第 ' + sub.split.lines[0] + '–' + sub.split.lines[1] +
+          ' 行拆出來批改的：把好幾題寫在同一個檔案裡）');
+      }
       rec.cases.forEach(function (c) {
         var ov = overrideOf(row.id, p.id, c.n);
+        var want = shortIO(c.expected), got = c.actual === '' ? '（沒有輸出）' : shortIO(c.actual);
+        // 測資說明常是「這組在測什麼；寫成 X 會得到 Y」，後半是給助教看的常見錯法，只留第一段（測資的用意）
+        var what = c.note ? '     這組在測：' + String(c.note).split('；')[0] : '';
         if (casePass(row.id, p.id, c)) {
-          if (ov === true) out.push('  #' + c.n + ' 助教改判為正確');
+          if (ov === true) {
+            out.push('  #' + c.n + ' 助教改判為正確：輸入 ' + shortIO(c.input) + '，應輸出 ' + want + '，你的輸出 ' + got);
+          }
           return;
         }
-        if (ov === false) { out.push('  #' + c.n + ' 沒有照格式'); return; }
         if (c.status === 'skip') return;
+        if (ov === false) {
+          // 助教判成沒有照格式：一樣要列出輸入、正確答案與學生印出來的，同學才知道差在哪
+          out.push('  #' + c.n + ' 沒有照格式：輸入 ' + shortIO(c.input) + '，應輸出 ' + want + '，你的輸出 ' + got);
+          return;
+        }
         if (c.status === 'pe') {
-          out.push('  #' + c.n + ' 格式不符，算錯：應只輸出 ' + shortIO(c.expected) + '，你的輸出 ' + shortIO(c.actual) +
+          out.push('  #' + c.n + ' 格式不符，算錯：輸入 ' + shortIO(c.input) + '，應只輸出 ' + want + '，你的輸出 ' + got +
             '（多印了說明文字或空白）');
           return;
         }
-        var detail = '  #' + c.n + ' ' + STATUS_TEXT[c.status] + '：輸入 ' + shortIO(c.input) + '，應輸出 ' + shortIO(c.expected);
-        if (c.status === 'wa' || c.status === 'reok') detail += '，你的輸出 ' + (c.actual === '' ? '（沒有輸出）' : shortIO(c.actual));
-        if (c.status === 're' && c.stderr) {
-          var lastLine = c.stderr.trim().split('\n').pop();
-          detail += '，錯誤 ' + shortIO(lastLine);
+        var detail = '  #' + c.n + ' ' + STATUS_TEXT[c.status] + '：輸入 ' + shortIO(c.input) + '，應輸出 ' + want;
+        if (c.status === 'wa' || c.status === 'reok') detail += '，你的輸出 ' + got;
+        if (c.status === 're' || c.status === 'reok') {
+          var es = errSummary(c.stderr);
+          if (c.status === 're' && c.actual !== '') detail += '，印出 ' + got;
+          if (es) detail += '，錯誤 ' + shortIO(es, 160);
         }
+        if (c.status === 'tle') detail += '（超過時間限制：多半是無窮迴圈，或程式還在等下一個 input()）';
         out.push(detail);
+        if (what) out.push(what);
       });
+      if (rec.flags && rec.flags.length) {
+        out.push('  寫法提醒（' + (p.requirement || '寫法要求') + '）：' + rec.flags.join('；') + '（自動檢查，僅供參考）');
+      }
       if (a && (a.delta || a.note)) {
         out.push('  助教調整 ' + (a.delta > 0 ? '+' : '') + (a.delta || 0) + ' 分' + (a.note ? '：' + a.note : ''));
       }
